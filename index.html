@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Flashcard Generator</title>
     <link rel="stylesheet" href="styles.css" />
 </head>
+
 <body>
     <header>
         <div class="header-inner">
@@ -42,17 +44,48 @@
         <input id="searchInput" class="search-input" placeholder="Search cards..." />
         <div id="flashcardContainer"></div>
     </section>
- 
+
     <section class="stats">
         <h2>Stats</h2>
         <div class="stats-grid">
-            <div class="stat"><div class="stat-label">Total</div><div id="statTotal" class="stat-value">0</div></div>
-            <div class="stat"><div class="stat-label">New</div><div id="statNew" class="stat-value">0</div></div>
-            <div class="stat"><div class="stat-label">Due</div><div id="statDue" class="stat-value">0</div></div>
-            <div class="stat"><div class="stat-label">Overdue</div><div id="statOverdue" class="stat-value">0</div></div>
-            <div class="stat"><div class="stat-label">Avg Ease</div><div id="statAvgEase" class="stat-value">0</div></div>
-            <div class="stat"><div class="stat-label">Avg Interval (d)</div><div id="statAvgInterval" class="stat-value">0</div></div>
-            <div class="stat"><div class="stat-label">Next Due</div><div id="statNextDue" class="stat-value">—</div></div>
+            <div class="stat">
+                <div class="stat-label">Total</div>
+                <div id="statTotal" class="stat-value">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">New</div>
+                <div id="statNew" class="stat-value">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Due</div>
+                <div id="statDue" class="stat-value">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Overdue</div>
+                <div id="statOverdue" class="stat-value">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Avg Ease</div>
+                <div id="statAvgEase" class="stat-value">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Avg Interval (d)</div>
+                <div id="statAvgInterval" class="stat-value">0</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Next Due</div>
+                <div id="statNextDue" class="stat-value">—</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">🔥 Streak</div>
+                <div id="statStreak" class="stat-value">0</div>
+            </div>
+        </div>
+        <div class="progress-container">
+            <div class="progress-label">Daily Progress (<span id="progressCount">0</span>/5)</div>
+            <div class="progress-track">
+                <div id="progressBar" class="progress-fill" style="width:0%"></div>
+            </div>
         </div>
         <div class="ratings">
             <span class="rating-pill">Easy: <span id="statRatingsEasy">0</span></span>
@@ -83,12 +116,22 @@
     </section>
 
     <section id="studySection" class="hidden">
-        <h2>Study Mode</h2>
+        <div class="study-header">
+            <h2>Study Mode</h2>
+            <div class="study-settings">
+                <label class="toggle-label mini" for="ttsAutoPlay">
+                    <input id="ttsAutoPlay" type="checkbox" />
+                    <span class="toggle-ui" aria-hidden="true"></span>
+                    <span class="toggle-text">Auto-Play TTS</span>
+                </label>
+            </div>
+        </div>
         <div id="studyCard"></div>
         <div class="study-buttons">
             <button class="diff-btn" data-diff="easy">Easy</button>
             <button class="diff-btn" data-diff="medium">Medium</button>
             <button class="diff-btn" data-diff="hard">Hard</button>
+            <button id="speakBtn" class="btn-secondary">🔊 Speak</button>
         </div>
     </section>
 
@@ -100,4 +143,5 @@
 
     <script src="script.js"></script>
 </body>
+
 </html>

@@ -13,47 +13,47 @@ const root = document.documentElement;
  * Accepts "dark" or "light"
  */
 function applyTheme(theme) {
-  if (theme === "dark") {
-    root.setAttribute("data-theme", "dark");
-    document.getElementById("themeSwitch").checked = true;
-  } else {
-    root.removeAttribute("data-theme");
-    document.getElementById("themeSwitch").checked = false;
-  }
+    if (theme === "dark") {
+        root.setAttribute("data-theme", "dark");
+        document.getElementById("themeSwitch").checked = true;
+    } else {
+        root.removeAttribute("data-theme");
+        document.getElementById("themeSwitch").checked = false;
+    }
 }
 
 /**
  * Load theme preference from localStorage (or system)
  */
 function loadTheme() {
-  const saved = localStorage.getItem(THEME_KEY);
-  if (saved === "dark" || saved === "light") {
-    applyTheme(saved);
-    return;
-  }
-  // If no saved preference, use system preference
-  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  applyTheme(prefersDark ? "dark" : "light");
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "dark" || saved === "light") {
+        applyTheme(saved);
+        return;
+    }
+    // If no saved preference, use system preference
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    applyTheme(prefersDark ? "dark" : "light");
 }
 
 /**
  * Toggle theme and persist
  */
 function toggleTheme() {
-  const isDark = root.getAttribute("data-theme") === "dark";
-  const newTheme = isDark ? "light" : "dark";
-  applyTheme(newTheme);
-  localStorage.setItem(THEME_KEY, newTheme);
+    const isDark = root.getAttribute("data-theme") === "dark";
+    const newTheme = isDark ? "light" : "dark";
+    applyTheme(newTheme);
+    localStorage.setItem(THEME_KEY, newTheme);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  // wire up toggle and load saved theme
-  const themeSwitch = document.getElementById("themeSwitch");
-  loadTheme();
-  themeSwitch.addEventListener("change", toggleTheme);
+    // wire up toggle and load saved theme
+    const themeSwitch = document.getElementById("themeSwitch");
+    loadTheme();
+    themeSwitch.addEventListener("change", toggleTheme);
 
-  // initialize app after theme is loaded
-  initApp();
+    // initialize app after theme is loaded
+    initApp();
 });
 
 /* ========== APP: FLASHCARDS (existing starter code) ========== */
@@ -68,8 +68,15 @@ let studyGesturesSetup = false;
 let categories = [];
 let selectedCategoryId = null;
 let ratingCounts = { easy: 0, medium: 0, hard: 0 };
+let currentStreak = 0;
+let lastStudyDate = null;
+let dailySessionCount = 0;
+
 const CATEGORY_KEY = "flashcards_categories";
 const SELECTED_CATEGORY_KEY = "flashcards_selected_category";
+const STREAK_KEY = "flashcards_streak";
+const LAST_DATE_KEY = "flashcards_last_date";
+const SESSION_COUNT_KEY = "flashcards_session_count";
 
 // ---------------------------
 // AI: Generate Flashcards
@@ -123,160 +130,160 @@ ${text}`;
 }
 
 function parseManualFlashcards(text) {
-  const lines = String(text).split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-  const cards = [];
-  let pendingQ = null;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const qMatch = line.match(/^((Q|Question)\s*:)\s*(.+)$/i);
-    if (qMatch) {
-      pendingQ = qMatch[3].trim();
-      for (let j = i + 1; j < lines.length; j++) {
-        const aMatch = lines[j].match(/^((A|Answer)\s*:)\s*(.+)$/i);
-        if (aMatch) {
-          cards.push({ question: pendingQ, answer: aMatch[3].trim() });
-          pendingQ = null;
-          i = j;
-          break;
+    const lines = String(text).split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    const cards = [];
+    let pendingQ = null;
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const qMatch = line.match(/^((Q|Question)\s*:)\s*(.+)$/i);
+        if (qMatch) {
+            pendingQ = qMatch[3].trim();
+            for (let j = i + 1; j < lines.length; j++) {
+                const aMatch = lines[j].match(/^((A|Answer)\s*:)\s*(.+)$/i);
+                if (aMatch) {
+                    cards.push({ question: pendingQ, answer: aMatch[3].trim() });
+                    pendingQ = null;
+                    i = j;
+                    break;
+                }
+            }
+            continue;
         }
-      }
-      continue;
+        const pairMatch = line.match(/^(.+?)\s*[-–—:=]\s+(.+)$/);
+        if (pairMatch) {
+            cards.push({ question: pairMatch[1].trim(), answer: pairMatch[2].trim() });
+            continue;
+        }
+        if (line.includes("\t")) {
+            const idx = line.indexOf("\t");
+            if (idx > 0) {
+                const q = line.slice(0, idx).trim();
+                const a = line.slice(idx + 1).trim();
+                if (q && a) cards.push({ question: q, answer: a });
+                continue;
+            }
+        }
     }
-    const pairMatch = line.match(/^(.+?)\s*[-–—:=]\s+(.+)$/);
-    if (pairMatch) {
-      cards.push({ question: pairMatch[1].trim(), answer: pairMatch[2].trim() });
-      continue;
+    if (cards.length === 0 && lines.length > 0) {
+        for (const l of lines) {
+            const m = l.match(/^(.+?)\?\s*(.+)$/);
+            if (m) {
+                cards.push({ question: m[1].trim() + '?', answer: m[2].trim() });
+            }
+        }
     }
-    if (line.includes("\t")) {
-      const idx = line.indexOf("\t");
-      if (idx > 0) {
-        const q = line.slice(0, idx).trim();
-        const a = line.slice(idx + 1).trim();
-        if (q && a) cards.push({ question: q, answer: a });
-        continue;
-      }
-    }
-  }
-  if (cards.length === 0 && lines.length > 0) {
-    for (const l of lines) {
-      const m = l.match(/^(.+?)\?\s*(.+)$/);
-      if (m) {
-        cards.push({ question: m[1].trim() + '?', answer: m[2].trim() });
-      }
-    }
-  }
-  return cards;
+    return cards;
 }
 
 function parseSmartFlashcards(text) {
-  const raw = String(text || "");
-  const lines = raw.split(/\r?\n/).map(l => l.trim());
-  const cards = [];
-  const used = new Set();
-  const push = (q, a) => {
-    const qq = String(q || "").trim();
-    const aa = String(a || "").trim();
-    if (!qq || !aa) return;
-    const key = qq.toLowerCase();
-    if (used.has(key)) return;
-    used.add(key);
-    const ans = aa.length > 500 ? aa.slice(0, 500) : aa;
-    cards.push({ question: qq, answer: ans });
-  };
-  const isHeading = (l) => /^#{1,6}\s+.+$/.test(l);
-  const isPairLine = (l) => /^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?.{1,120}?\s*(?:—|–|-|:|=|>)\s+.+$/.test(l);
-  const isQLine = (l) => /^((Q|Question)\s*:)\s*/i.test(l);
-  const isALine = (l) => /^((A|Answer)\s*:)\s*/i.test(l);
-  const isQuestionSentence = (l) => /[?]\s*$/.test(l) && l.length > 3;
-  const collectAnswer = (start) => {
-    let buf = [];
-    let end = start - 1;
-    for (let k = start; k < lines.length; k++) {
-      const t = lines[k];
-      if (!t) { if (buf.length) { end = k; break; } else { continue; } }
-      if (isHeading(t) || isPairLine(t) || isQLine(t) || isALine(t) || isQuestionSentence(t)) { end = k - 1; break; }
-      buf.push(t);
-      end = k;
+    const raw = String(text || "");
+    const lines = raw.split(/\r?\n/).map(l => l.trim());
+    const cards = [];
+    const used = new Set();
+    const push = (q, a) => {
+        const qq = String(q || "").trim();
+        const aa = String(a || "").trim();
+        if (!qq || !aa) return;
+        const key = qq.toLowerCase();
+        if (used.has(key)) return;
+        used.add(key);
+        const ans = aa.length > 500 ? aa.slice(0, 500) : aa;
+        cards.push({ question: qq, answer: ans });
+    };
+    const isHeading = (l) => /^#{1,6}\s+.+$/.test(l);
+    const isPairLine = (l) => /^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?.{1,120}?\s*(?:—|–|-|:|=|>)\s+.+$/.test(l);
+    const isQLine = (l) => /^((Q|Question)\s*:)\s*/i.test(l);
+    const isALine = (l) => /^((A|Answer)\s*:)\s*/i.test(l);
+    const isQuestionSentence = (l) => /[?]\s*$/.test(l) && l.length > 3;
+    const collectAnswer = (start) => {
+        let buf = [];
+        let end = start - 1;
+        for (let k = start; k < lines.length; k++) {
+            const t = lines[k];
+            if (!t) { if (buf.length) { end = k; break; } else { continue; } }
+            if (isHeading(t) || isPairLine(t) || isQLine(t) || isALine(t) || isQuestionSentence(t)) { end = k - 1; break; }
+            buf.push(t);
+            end = k;
+        }
+        return { text: buf.join(" "), end };
+    };
+    for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (!l) continue;
+        const qm = l.match(/^((Q|Question)\s*:\s*)(.+)$/i);
+        if (qm) {
+            let ans = "";
+            let stop = i;
+            let found = false;
+            for (let j = i + 1; j < lines.length; j++) {
+                const am = lines[j].match(/^((A|Answer)\s*:\s*)(.+)$/i);
+                if (am) { ans = am[3].trim(); stop = j; found = true; break; }
+            }
+            if (!found) {
+                const c = collectAnswer(i + 1);
+                ans = c.text;
+                stop = c.end;
+            }
+            push(qm[3].trim(), ans);
+            i = Math.max(i, stop);
+            continue;
+        }
     }
-    return { text: buf.join(" "), end };
-  };
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    if (!l) continue;
-    const qm = l.match(/^((Q|Question)\s*:\s*)(.+)$/i);
-    if (qm) {
-      let ans = "";
-      let stop = i;
-      let found = false;
-      for (let j = i + 1; j < lines.length; j++) {
-        const am = lines[j].match(/^((A|Answer)\s*:\s*)(.+)$/i);
-        if (am) { ans = am[3].trim(); stop = j; found = true; break; }
-      }
-      if (!found) {
-        const c = collectAnswer(i + 1);
-        ans = c.text;
-        stop = c.end;
-      }
-      push(qm[3].trim(), ans);
-      i = Math.max(i, stop);
-      continue;
+    for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (!l) continue;
+        const pm = l.match(/^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?(.+?)\s*(?:—|–|-|:|=|>)\s+(.+)$/);
+        if (pm) {
+            let ans = pm[2].trim();
+            let end = i;
+            const c = collectAnswer(i + 1);
+            if (c.text) { ans = ans + " " + c.text; end = c.end; }
+            push(pm[1].trim(), ans);
+            i = Math.max(i, end);
+            continue;
+        }
+        const paren = l.match(/^\s*(?:[-*•]\s*)?(.+?)\s*\((.+?)\)\s*$/);
+        if (paren && paren[1] && paren[2] && paren[2].length > 4) {
+            push(paren[1].trim(), paren[2].trim());
+            continue;
+        }
     }
-  }
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    if (!l) continue;
-    const pm = l.match(/^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?(.+?)\s*(?:—|–|-|:|=|>)\s+(.+)$/);
-    if (pm) {
-      let ans = pm[2].trim();
-      let end = i;
-      const c = collectAnswer(i + 1);
-      if (c.text) { ans = ans + " " + c.text; end = c.end; }
-      push(pm[1].trim(), ans);
-      i = Math.max(i, end);
-      continue;
+    for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (!l) continue;
+        if (isQuestionSentence(l)) {
+            const q = l;
+            const c = collectAnswer(i + 1);
+            if (c.text) push(q, c.text);
+            i = Math.max(i, c.end);
+        }
     }
-    const paren = l.match(/^\s*(?:[-*•]\s*)?(.+?)\s*\((.+?)\)\s*$/);
-    if (paren && paren[1] && paren[2] && paren[2].length > 4) {
-      push(paren[1].trim(), paren[2].trim());
-      continue;
+    for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (!l) continue;
+        const m = l.match(/^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?([A-Z][A-Za-z0-9 '()\/\-]{1,80})\s+(?:is|are|refers to|means|consists of)\s+(.{5,300})$/i);
+        if (m) {
+            const term = m[1].trim();
+            let ans = m[2].trim().replace(/\s*[\.\!]?\s*$/, "");
+            push(`What is ${term}?`, ans);
+        }
     }
-  }
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    if (!l) continue;
-    if (isQuestionSentence(l)) {
-      const q = l;
-      const c = collectAnswer(i + 1);
-      if (c.text) push(q, c.text);
-      i = Math.max(i, c.end);
+    for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (!l) continue;
+        if (isHeading(l)) {
+            const title = l.replace(/^#{1,6}\s+/, "").trim();
+            const c = collectAnswer(i + 1);
+            if (c.text) {
+                push(title, c.text);
+                i = Math.max(i, c.end);
+            }
+        }
     }
-  }
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    if (!l) continue;
-    const m = l.match(/^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?([A-Z][A-Za-z0-9 '()\/\-]{1,80})\s+(?:is|are|refers to|means|consists of)\s+(.{5,300})$/i);
-    if (m) {
-      const term = m[1].trim();
-      let ans = m[2].trim().replace(/\s*[\.\!]?\s*$/, "");
-      push(`What is ${term}?`, ans);
+    if (cards.length === 0) {
+        return parseManualFlashcards(text);
     }
-  }
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    if (!l) continue;
-    if (isHeading(l)) {
-      const title = l.replace(/^#{1,6}\s+/, "").trim();
-      const c = collectAnswer(i + 1);
-      if (c.text) {
-        push(title, c.text);
-        i = Math.max(i, c.end);
-      }
-    }
-  }
-  if (cards.length === 0) {
-    return parseManualFlashcards(text);
-  }
-  return cards;
+    return cards;
 }
 // ---------------------------
 // Render Flashcards
@@ -323,10 +330,10 @@ function renderFlashcards() {
 
 // helper to escape HTML inserted into DOM
 function escapeHtml(str = "") {
-  return String(str)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
+    return String(str)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
 }
 
 // ---------------------------
@@ -359,35 +366,87 @@ function showStudyCard() {
     `;
 
     document.getElementById("studyCard").onclick = () => {
+        const text = card.answer;
         document.getElementById("studyCard").innerHTML = `
-            <div><strong>A:</strong> ${escapeHtml(card.answer)}</div>
+            <div><strong>A:</strong> ${escapeHtml(text)}</div>
         `;
+        if (document.getElementById("ttsAutoPlay").checked) {
+            speakText(text);
+        }
     };
 }
 
-    document.addEventListener("click", (e) => {
-        if (!e.target || !e.target.classList) return;
-        if (e.target.classList.contains("diff-btn")) {
-            const diff = e.target.getAttribute("data-diff");
-            rateCurrentCard(diff);
+function speakText(text) {
+    if (!text) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    window.speechSynthesis.speak(utterance);
+}
+
+function updateStreakAndProgress() {
+    const today = new Date().toDateString();
+
+    if (lastStudyDate !== today) {
+        if (lastStudyDate) {
+            const last = new Date(lastStudyDate);
+            const yest = new Date();
+            yest.setDate(yest.getDate() - 1);
+            if (last.toDateString() !== yest.toDateString()) {
+                currentStreak = 0;
+            }
         }
-        if (e.target.classList.contains("edit-card")) {
-            e.stopPropagation();
-            const id = e.target.getAttribute("data-id");
-            editCard(id);
-        }
-        if (e.target.classList.contains("delete-card")) {
-            e.stopPropagation();
-            const id = e.target.getAttribute("data-id");
-            deleteCard(id);
-        }
-    });
+        lastStudyDate = today;
+        dailySessionCount = 0;
+    }
+
+    dailySessionCount++;
+    if (dailySessionCount === 5) {
+        currentStreak++;
+    }
+
+    saveStreakData();
+    updateStats();
+}
+
+function saveStreakData() {
+    localStorage.setItem(STREAK_KEY, currentStreak);
+    localStorage.setItem(LAST_DATE_KEY, lastStudyDate);
+    localStorage.setItem(SESSION_COUNT_KEY, dailySessionCount);
+}
+
+function loadStreakData() {
+    currentStreak = parseInt(localStorage.getItem(STREAK_KEY)) || 0;
+    lastStudyDate = localStorage.getItem(LAST_DATE_KEY);
+    const savedCount = parseInt(localStorage.getItem(SESSION_COUNT_KEY)) || 0;
+    const today = new Date().toDateString();
+    dailySessionCount = (lastStudyDate === today) ? savedCount : 0;
+}
+
+document.addEventListener("click", (e) => {
+    if (!e.target || !e.target.classList) return;
+    if (e.target.classList.contains("diff-btn")) {
+        const diff = e.target.getAttribute("data-diff");
+        rateCurrentCard(diff);
+    }
+    if (e.target.classList.contains("edit-card")) {
+        e.stopPropagation();
+        const id = e.target.getAttribute("data-id");
+        editCard(id);
+    }
+    if (e.target.classList.contains("delete-card")) {
+        e.stopPropagation();
+        const id = e.target.getAttribute("data-id");
+        deleteCard(id);
+    }
+});
 
 // ---------------------------
 // Save / Load / Export / Import
 // ---------------------------
 document.addEventListener("DOMContentLoaded", () => {
-  // these elements may be wired again after DOM ready in initApp
+    // these elements may be wired again after DOM ready in initApp
 });
 
 function initApp() {
@@ -496,6 +555,16 @@ function initApp() {
         renderFlashcards();
     });
     if (mobileAdd) mobileAdd.addEventListener("click", quickAddCard);
+
+    document.getElementById("speakBtn").addEventListener("click", () => {
+        const card = flashcards.find(c => c.id === currentCardId);
+        if (card) {
+            const isFlipped = document.getElementById("studyCard").innerText.includes("A:");
+            speakText(isFlipped ? card.answer : card.question);
+        }
+    });
+
+    loadStreakData();
     setupStudyGestures();
     initCategories();
 }
@@ -522,7 +591,7 @@ function getNextDueCard() {
     const now = Date.now();
     const dueCards = flashcards.filter(c => (c.due || 0) <= now);
     if (dueCards.length === 0) return null;
-    dueCards.sort((a,b) => (a.due||0) - (b.due||0));
+    dueCards.sort((a, b) => (a.due || 0) - (b.due || 0));
     return dueCards[0];
 }
 
@@ -552,6 +621,7 @@ function rateCurrentCard(diff = "medium") {
     card.stats = s;
     card.due = now + s.interval * 24 * 60 * 60 * 1000;
     saveCurrentDeck();
+    updateStreakAndProgress();
     if (diff === "easy") ratingCounts.easy = (ratingCounts.easy || 0) + 1;
     else if (diff === "hard") ratingCounts.hard = (ratingCounts.hard || 0) + 1;
     else ratingCounts.medium = (ratingCounts.medium || 0) + 1;
@@ -768,10 +838,10 @@ function updateStats() {
     const total = flashcards.length;
     const now = Date.now();
     const d = new Date();
-    d.setHours(0,0,0,0);
+    d.setHours(0, 0, 0, 0);
     const startToday = d.getTime();
     const d2 = new Date();
-    d2.setHours(23,59,59,999);
+    d2.setHours(23, 59, 59, 999);
     const endToday = d2.getTime();
     const weekEnd = endToday + 7 * 24 * 60 * 60 * 1000;
     let newCount = 0, dueCount = 0, overdueCount = 0;
@@ -825,4 +895,17 @@ function updateStats() {
     if (bToday) bToday.style.width = ((distToday / totalForBars) * 100).toFixed(2) + "%";
     if (bWeek) bWeek.style.width = ((distWeek / totalForBars) * 100).toFixed(2) + "%";
     if (bLater) bLater.style.width = ((distLater / totalForBars) * 100).toFixed(2) + "%";
+
+    // Streak & Progress UI
+    const elStreak = document.getElementById("statStreak");
+    if (elStreak) elStreak.textContent = String(currentStreak);
+
+    const elProgCount = document.getElementById("progressCount");
+    if (elProgCount) elProgCount.textContent = String(Math.min(5, dailySessionCount));
+
+    const elProgBar = document.getElementById("progressBar");
+    if (elProgBar) {
+        const pct = (Math.min(5, dailySessionCount) / 5) * 100;
+        elProgBar.style.width = pct + "%";
+    }
 }
