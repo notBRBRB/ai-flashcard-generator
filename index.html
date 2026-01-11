@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>AI Flashcard Generator</title>
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <header>
+        <div class="header-inner">
+            <h1>AI Flashcard Generator</h1>
+            <div class="theme-toggle">
+                <label class="toggle-label" for="themeSwitch">
+                    <input id="themeSwitch" type="checkbox" />
+                    <span class="toggle-ui" aria-hidden="true"></span>
+                    <span class="toggle-text">Dark</span>
+                </label>
+            </div>
+        </div>
+    </header>
+
+    <section class="categories">
+        <h2>Categories</h2>
+        <div class="cat-controls">
+            <select id="categorySelect"></select>
+            <button id="addCategoryBtn" class="btn-secondary">Add</button>
+            <button id="renameCategoryBtn" class="btn-secondary">Rename</button>
+            <button id="deleteCategoryBtn" class="btn-danger">Delete</button>
+        </div>
+    </section>
+
+    <section class="input-section">
+        <textarea id="notesInput" placeholder="Paste notes or enter 'Term - Definition' pairs (offline)"></textarea>
+        <button id="generateBtn">Generate Flashcards</button>
+        <span id="genSpinner" class="spinner hidden" aria-live="polite"></span>
+    </section>
+
+    <section class="flashcard-section">
+        <h2>Your Flashcards</h2>
+        <div id="deckInfo" class="deck-info">0 cards</div>
+        <input id="searchInput" class="search-input" placeholder="Search cards..." />
+        <div id="flashcardContainer"></div>
+    </section>
+ 
+    <section class="stats">
+        <h2>Stats</h2>
+        <div class="stats-grid">
+            <div class="stat"><div class="stat-label">Total</div><div id="statTotal" class="stat-value">0</div></div>
+            <div class="stat"><div class="stat-label">New</div><div id="statNew" class="stat-value">0</div></div>
+            <div class="stat"><div class="stat-label">Due</div><div id="statDue" class="stat-value">0</div></div>
+            <div class="stat"><div class="stat-label">Overdue</div><div id="statOverdue" class="stat-value">0</div></div>
+            <div class="stat"><div class="stat-label">Avg Ease</div><div id="statAvgEase" class="stat-value">0</div></div>
+            <div class="stat"><div class="stat-label">Avg Interval (d)</div><div id="statAvgInterval" class="stat-value">0</div></div>
+            <div class="stat"><div class="stat-label">Next Due</div><div id="statNextDue" class="stat-value">—</div></div>
+        </div>
+        <div class="ratings">
+            <span class="rating-pill">Easy: <span id="statRatingsEasy">0</span></span>
+            <span class="rating-pill">Medium: <span id="statRatingsMedium">0</span></span>
+            <span class="rating-pill">Hard: <span id="statRatingsHard">0</span></span>
+        </div>
+        <div class="dist">
+            <div class="dist-label">Due Distribution</div>
+            <div class="dist-bars">
+                <div class="dist-bar overdue" id="distOverdue" style="width:0%"></div>
+                <div class="dist-bar today" id="distToday" style="width:0%"></div>
+                <div class="dist-bar week" id="distWeek" style="width:0%"></div>
+                <div class="dist-bar later" id="distLater" style="width:0%"></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="actions">
+        <button id="studyModeBtn">Study Mode</button>
+        <button id="saveDeckBtn">Save Deck</button>
+        <button id="loadDeckBtn">Load Deck</button>
+        <button id="exportDeckBtn">Export JSON</button>
+        <button id="shuffleDeckBtn" class="btn-secondary">Shuffle</button>
+        <button id="clearDeckBtn" class="btn-danger">Clear Deck</button>
+
+        <label for="importJSON" class="import-label">Import JSON</label>
+        <input type="file" id="importJSON" accept="application/json" />
+    </section>
+
+    <section id="studySection" class="hidden">
+        <h2>Study Mode</h2>
+        <div id="studyCard"></div>
+        <div class="study-buttons">
+            <button class="diff-btn" data-diff="easy">Easy</button>
+            <button class="diff-btn" data-diff="medium">Medium</button>
+            <button class="diff-btn" data-diff="hard">Hard</button>
+        </div>
+    </section>
+
+    <div class="mobile-toolbar">
+        <button id="mobileStudyBtn">Study</button>
+        <button id="mobileShuffleBtn" class="btn-secondary">Shuffle</button>
+        <button id="mobileAddBtn" class="btn-success">Add Card</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
