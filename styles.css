@@ -428,6 +428,22 @@ main {
   gap: 12px;
 }
 
+.create-options {
+  margin: 20px 0;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.warning-text {
+  margin-top: 15px;
+  padding: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  border-radius: 12px;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
 /* ========== STUDY MODE ========== */
 #studySection {
   display: flex;
@@ -595,6 +611,77 @@ main {
   background: transparent;
   color: var(--accent);
   font-weight: 600;
+}
+
+/* API Key Input */
+.api-key-wrapper {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.text-input {
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.input-hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+/* Mini Toggle Styles */
+.toggle-label.mini {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle-label.mini input {
+  display: none;
+}
+
+.toggle-ui {
+  width: 44px;
+  height: 24px;
+  background: var(--card-border);
+  border-radius: 20px;
+  position: relative;
+  transition: 0.3s;
+}
+
+.toggle-ui::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  background: white;
+  border-radius: 50%;
+  transition: 0.3s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-label.mini input:checked+.toggle-ui {
+  background: var(--accent);
+}
+
+.toggle-label.mini input:checked+.toggle-ui::after {
+  transform: translateX(20px);
+}
+
+.toggle-text {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
 }
 
 /* ========== PROGRESS BAR ========== */

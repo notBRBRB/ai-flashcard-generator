@@ -1,8 +1,8 @@
 // ================================
-//  INSERT YOUR OPENAI API KEY HERE
-//  (if using the AI features)
+//  OPENAI API KEY MANAGEMENT
 // ================================
-const OPENAI_API_KEY = "YOUR_API_KEY_HERE";
+const API_KEY_STORAGE = "flashcards_openai_api_key";
+let OPENAI_API_KEY = localStorage.getItem(API_KEY_STORAGE) || "";
 
 /* ========== THEME (DARK MODE) ========== */
 const THEME_KEY = "flashcards_theme"; // "dark" or "light"
@@ -170,50 +170,77 @@ const SESSION_COUNT_KEY = "flashcards_session_count";
 // AI: Generate Flashcards
 // ---------------------------
 async function generateFlashcardsFromText(text) {
+    const forceAI = document.getElementById("forceAI")?.checked || false;
     const heuristic = parseSmartFlashcards(text);
-    if (heuristic.length >= 3 || (!OPENAI_API_KEY || OPENAI_API_KEY === "YOUR_API_KEY_HERE")) {
-        return heuristic;
+
+    // If no API key, we must return heuristic (or empty)
+    if (!OPENAI_API_KEY || OPENAI_API_KEY === "YOUR_API_KEY_HERE" || OPENAI_API_KEY.trim() === "") {
+        if (forceAI) showToast("API Key missing! Check Settings.", "error");
+        return { cards: heuristic };
     }
 
-    const prompt = `Extract concise Q/A flashcards from the free-form notes below.
-Return ONLY a JSON array like:
-[
-  {"question":"...", "answer":"..."},
-  {"question":"...", "answer":"..."}
-]
-Guidelines:
-- Identify terms, definitions, and key facts even without explicit formatting
-- Keep questions short; answers clear and under ~200 chars
-- Avoid duplicates and overly broad items
-- Skip filler or meta text
+    // If not forcing AI and text is short, and heuristic found something, use heuristic
+    if (!forceAI && text.length < 300 && heuristic.length >= 2) {
+        return { cards: heuristic };
+    }
 
-NOTES:
+    const prompt = `You are an expert educator. Summarize the following study notes into high-quality Q/A flashcards.
+Instructions:
+1. Identify major topics or sections in the text and group cards into categories.
+2. If the text is a single topic, use one category like "General" or the topic name.
+3. Keep questions short and answers clear (under 300 characters).
+4. Return ONLY a JSON object in this format:
+{
+  "categories": [
+    {
+      "name": "Topic Name",
+      "cards": [
+        {"question": "...", "answer": "..."}
+      ]
+    }
+  ]
+}
+
+NOTES TO SUMMARIZE:
 ${text}`;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages: [
-                { role: "user", content: prompt }
-            ],
-            temperature: 0.3
-        })
-    });
-
-    const data = await response.json();
-    let jsonText = data.choices?.[0]?.message?.content ?? "";
-
     try {
-        const parsed = JSON.parse(jsonText);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-        return heuristic;
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${OPENAI_API_KEY}`
+            },
+            body: JSON.stringify({
+                model: "gpt-4o-mini",
+                messages: [{ role: "user", content: prompt }],
+                temperature: 0.4
+            })
+        });
+
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error?.message || `API Error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const jsonText = data.choices?.[0]?.message?.content ?? "";
+
+        // Strip out potential markdown code blocks if the AI included them
+        const cleanedJson = jsonText.replace(/```json|```/g, "").trim();
+        const parsed = JSON.parse(cleanedJson);
+
+        if (parsed.categories && Array.isArray(parsed.categories)) {
+            return parsed; // Return the multi-category object
+        } else if (Array.isArray(parsed)) {
+            return { categories: [{ name: "Generated", cards: parsed }] };
+        }
+
+        return { cards: heuristic };
     } catch (e) {
-        return heuristic;
+        console.error("AI Generation failed:", e);
+        showToast(`AI Error: ${e.message}`, "error");
+        return { cards: heuristic };
     }
 }
 
@@ -265,112 +292,70 @@ function parseManualFlashcards(text) {
 
 function parseSmartFlashcards(text) {
     const raw = String(text || "");
-    const lines = raw.split(/\r?\n/).map(l => l.trim());
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
     const cards = [];
     const used = new Set();
-    const push = (q, a) => {
-        const qq = String(q || "").trim();
-        const aa = String(a || "").trim();
+    const push = (q, options) => {
+        let qq = String(q || "").trim();
+        let aa = "";
+
+        if (typeof options === 'string') aa = options;
+        else if (options && options.text) aa = options.text;
+
+        aa = aa.trim();
         if (!qq || !aa) return;
+
+        // Strip prefixes like "Q:" or "A:" if they leaked in
+        qq = qq.replace(/^(Q|Question|Term)\s*:\s*/i, "").trim();
+        aa = aa.replace(/^(A|Answer|Definition)\s*:\s*/i, "").trim();
+
         const key = qq.toLowerCase();
         if (used.has(key)) return;
         used.add(key);
-        const ans = aa.length > 500 ? aa.slice(0, 500) : aa;
+        const ans = aa.length > 1000 ? aa.slice(0, 1000) : aa;
         cards.push({ question: qq, answer: ans });
     };
+
     const isHeading = (l) => /^#{1,6}\s+.+$/.test(l);
-    const isPairLine = (l) => /^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?.{1,120}?\s*(?:—|–|-|:|=|>)\s+.+$/.test(l);
-    const isQLine = (l) => /^((Q|Question)\s*:)\s*/i.test(l);
-    const isALine = (l) => /^((A|Answer)\s*:)\s*/i.test(l);
-    const isQuestionSentence = (l) => /[?]\s*$/.test(l) && l.length > 3;
-    const collectAnswer = (start) => {
-        let buf = [];
-        let end = start - 1;
-        for (let k = start; k < lines.length; k++) {
-            const t = lines[k];
-            if (!t) { if (buf.length) { end = k; break; } else { continue; } }
-            if (isHeading(t) || isPairLine(t) || isQLine(t) || isALine(t) || isQuestionSentence(t)) { end = k - 1; break; }
-            buf.push(t);
-            end = k;
-        }
-        return { text: buf.join(" "), end };
-    };
+
     for (let i = 0; i < lines.length; i++) {
         const l = lines[i];
-        if (!l) continue;
-        const qm = l.match(/^((Q|Question)\s*:\s*)(.+)$/i);
+
+        // Handle Q: ... A: ... on the same line
+        const sameLineMatch = l.match(/^Q:\s*(.+?)\s*A:\s*(.+)$/i);
+        if (sameLineMatch) {
+            push(sameLineMatch[1], sameLineMatch[2]);
+            continue;
+        }
+
+        // Handle Q: ... (next line) A: ...
+        const qm = l.match(/^(Q|Question)\s*:\s*(.+)$/i);
         if (qm) {
             let ans = "";
             let stop = i;
-            let found = false;
             for (let j = i + 1; j < lines.length; j++) {
-                const am = lines[j].match(/^((A|Answer)\s*:\s*)(.+)$/i);
-                if (am) { ans = am[3].trim(); stop = j; found = true; break; }
+                const am = lines[j].match(/^(A|Answer)\s*:\s*(.+)$/i);
+                if (am) {
+                    ans = am[2].trim();
+                    stop = j;
+                    break;
+                }
             }
-            if (!found) {
-                const c = collectAnswer(i + 1);
-                ans = c.text;
-                stop = c.end;
+            if (ans) {
+                push(qm[2], ans);
+                i = stop;
+                continue;
             }
-            push(qm[3].trim(), ans);
-            i = Math.max(i, stop);
+        }
+
+        // Handle Term - Definition
+        const pm = l.match(/^(.{2,100})\s*(?:—|–|-|:|=)\s+(.{2,500})$/);
+        if (pm && !l.toLowerCase().startsWith('http')) {
+            push(pm[1], pm[2]);
             continue;
         }
     }
-    for (let i = 0; i < lines.length; i++) {
-        const l = lines[i];
-        if (!l) continue;
-        const pm = l.match(/^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?(.+?)\s*(?:—|–|-|:|=|>)\s+(.+)$/);
-        if (pm) {
-            let ans = pm[2].trim();
-            let end = i;
-            const c = collectAnswer(i + 1);
-            if (c.text) { ans = ans + " " + c.text; end = c.end; }
-            push(pm[1].trim(), ans);
-            i = Math.max(i, end);
-            continue;
-        }
-        const paren = l.match(/^\s*(?:[-*•]\s*)?(.+?)\s*\((.+?)\)\s*$/);
-        if (paren && paren[1] && paren[2] && paren[2].length > 4) {
-            push(paren[1].trim(), paren[2].trim());
-            continue;
-        }
-    }
-    for (let i = 0; i < lines.length; i++) {
-        const l = lines[i];
-        if (!l) continue;
-        if (isQuestionSentence(l)) {
-            const q = l;
-            const c = collectAnswer(i + 1);
-            if (c.text) push(q, c.text);
-            i = Math.max(i, c.end);
-        }
-    }
-    for (let i = 0; i < lines.length; i++) {
-        const l = lines[i];
-        if (!l) continue;
-        const m = l.match(/^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?([A-Z][A-Za-z0-9 '()\/\-]{1,80})\s+(?:is|are|refers to|means|consists of)\s+(.{5,300})$/i);
-        if (m) {
-            const term = m[1].trim();
-            let ans = m[2].trim().replace(/\s*[\.\!]?\s*$/, "");
-            push(`What is ${term}?`, ans);
-        }
-    }
-    for (let i = 0; i < lines.length; i++) {
-        const l = lines[i];
-        if (!l) continue;
-        if (isHeading(l)) {
-            const title = l.replace(/^#{1,6}\s+/, "").trim();
-            const c = collectAnswer(i + 1);
-            if (c.text) {
-                push(title, c.text);
-                i = Math.max(i, c.end);
-            }
-        }
-    }
-    if (cards.length === 0) {
-        return parseManualFlashcards(text);
-    }
+
     return cards;
 }
 // ---------------------------
@@ -569,13 +554,49 @@ function initApp() {
         const spinner = document.getElementById("genSpinner");
         btn.disabled = true;
         spinner.classList.remove("hidden");
+
         try {
-            flashcards = normalizeFlashcards(await generateFlashcardsFromText(text));
-            if (!Array.isArray(flashcards) || flashcards.length === 0) {
-                alert("No flashcards generated. Try formats like 'Term - Definition' or 'Q:' followed by 'A:'.");
-                return;
+            const result = await generateFlashcardsFromText(text);
+
+            if (result.categories && Array.isArray(result.categories)) {
+                // Multi-category logic
+                for (const catData of result.categories) {
+                    let cat = categories.find(c => c.name.toLowerCase() === catData.name.toLowerCase());
+                    if (!cat) {
+                        const newId = genId();
+                        cat = { id: newId, name: catData.name };
+                        categories.push(cat);
+                    }
+
+                    const newCards = normalizeFlashcards(catData.cards);
+                    const existingData = localStorage.getItem(getCategoryStorageKey(cat.id));
+                    let currentCards = existingData ? normalizeFlashcards(JSON.parse(existingData)) : [];
+
+                    // Merge and save
+                    currentCards = [...currentCards, ...newCards];
+                    localStorage.setItem(getCategoryStorageKey(cat.id), JSON.stringify(currentCards));
+                }
+
+                // Select the first new category and load it
+                selectedCategoryId = categories.find(c => c.name.toLowerCase() === result.categories[0].name.toLowerCase()).id;
+                localStorage.setItem(SELECTED_CATEGORY_KEY, selectedCategoryId);
+                saveCategories();
+                renderCategoryOptions();
+                loadDeckForCategory(selectedCategoryId);
+                showToast(`Generated ${result.categories.length} categories!`, "success");
+            } else if (result.cards) {
+                // Heuristic or single-list fallback
+                flashcards = [...flashcards, ...normalizeFlashcards(result.cards)];
+                saveCurrentDeck();
+                renderFlashcards();
+                showToast(`Generated ${result.cards.length} cards!`, "success");
             }
-            renderFlashcards();
+
+            document.getElementById("notesInput").value = "";
+            navigateTo('library');
+        } catch (err) {
+            console.error(err);
+            showToast("Failed to process cards.", "error");
         } finally {
             generating = false;
             btn.disabled = false;
@@ -625,6 +646,38 @@ function initApp() {
         } catch (e) {
             alert("Invalid JSON file.");
         }
+    });
+
+    // API Key Management
+    const apiKeyInput = document.getElementById("apiKeyInput");
+    const saveKeyBtn = document.getElementById("saveKeyBtn");
+    const aiWarning = document.getElementById("aiMissingWarning");
+
+    if (apiKeyInput) {
+        apiKeyInput.value = OPENAI_API_KEY;
+    }
+
+    const updateAIWarning = () => {
+        if (!OPENAI_API_KEY) {
+            aiWarning?.classList.remove("hidden");
+        } else {
+            aiWarning?.classList.add("hidden");
+        }
+    };
+    updateAIWarning();
+
+    saveKeyBtn?.addEventListener("click", () => {
+        const val = apiKeyInput.value.trim();
+        if (!val) {
+            OPENAI_API_KEY = "";
+            localStorage.removeItem(API_KEY_STORAGE);
+            showToast("API Key removed.", "info");
+        } else {
+            OPENAI_API_KEY = val;
+            localStorage.setItem(API_KEY_STORAGE, val);
+            showToast("API Key saved!", "success");
+        }
+        updateAIWarning();
     });
 
     document.getElementById("clearDeckBtn").addEventListener("click", () => {
