@@ -62,6 +62,8 @@
             <div class="quick-actions">
                 <button id="startStudyBtn" class="btn-primary large" onclick="navigateTo('study')">Start
                     Studying</button>
+                <button id="saveAllBtnDash" class="btn-secondary"
+                    onclick="saveCurrentDeck(); showToast('All progress saved!', 'success');">Save All Progress</button>
             </div>
 
             <div class="detailed-stats">
@@ -101,6 +103,7 @@
             <div id="flashcardContainer"></div>
 
             <div class="library-actions">
+                <button id="saveDeckBtnLib" class="btn-primary">Save Changes</button>
                 <button id="shuffleDeckBtn" class="btn-secondary">Shuffle</button>
                 <button id="clearDeckBtn" class="btn-danger">Clear Deck</button>
             </div>

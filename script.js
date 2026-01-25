@@ -736,6 +736,9 @@ function initApp() {
         } catch (e) {
             alert("Failed to load deck (invalid JSON).");
         }
+    }); document.getElementById("saveDeckBtnLib")?.addEventListener("click", () => {
+        saveCurrentDeck();
+        showToast("Deck saved successfully!", "success");
     });
 
     document.getElementById("exportDeckBtn").addEventListener("click", () => {
@@ -896,16 +899,16 @@ function updateDeckInfo() {
     const el = document.getElementById("deckInfo");
     const sel = document.getElementById("categorySelect");
 
-    // Ensure we use the actual value from dropdown if available, 
-    // to prevent any sync issues between the variable and UI
-    if (sel && sel.value) {
+    // RIGID SYNC: The dropdown is the source of truth for the DISPLAYED category name.
+    if (sel && sel.value && sel.value !== selectedCategoryId) {
+        console.log(`Syncing category state: current=${selectedCategoryId} -> UI=${sel.value}`);
         selectedCategoryId = sel.value;
     }
 
     if (el) {
         const due = getDueCount();
         const name = getCategoryName(selectedCategoryId);
-        console.log(`Updating Deck Info: CategoryID=${selectedCategoryId}, Name=${name}, Cards=${flashcards.length}`);
+        console.log(`Updating Deck Info: ID=${selectedCategoryId}, Name=${name}, Cards=${flashcards.length}`);
         el.textContent = `${flashcards.length} ${flashcards.length === 1 ? 'card' : 'cards'} (${due} due) in ${name}`;
     }
 }
@@ -1053,11 +1056,13 @@ function initCategories() {
     const delBtn = document.getElementById("deleteCategoryBtn");
     sel.addEventListener("change", (e) => {
         const newId = e.target.value;
-        console.log(`Category Select Changed to: ${newId} (${getCategoryName(newId)})`);
+        console.log(`User selected category: ${newId} (${getCategoryName(newId)})`);
         selectedCategoryId = newId;
         localStorage.setItem(SELECTED_CATEGORY_KEY, selectedCategoryId);
         loadRatingCounts();
         loadDeckForCategory(selectedCategoryId);
+        // Force immediate UI update
+        updateDeckInfo();
     });
     addBtn.addEventListener("click", () => {
         const name = prompt("New category name");
@@ -1147,6 +1152,8 @@ function loadDeckForCategory(id) {
 function saveCurrentDeck() {
     if (!selectedCategoryId) return;
     localStorage.setItem(getCategoryStorageKey(selectedCategoryId), JSON.stringify(flashcards));
+    saveCategories(); // Also save the category list and current selection
+    localStorage.setItem(SELECTED_CATEGORY_KEY, selectedCategoryId);
 }
 
 function genId() {
