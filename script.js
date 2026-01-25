@@ -236,25 +236,61 @@ ${text}`;
             const data = await response.json();
             jsonText = data.choices?.[0]?.message?.content ?? "";
         } else {
-            // Gemini API call - v1beta supports response_mime_type for structured output
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: promptText }] }],
-                    generationConfig: {
-                        responseMimeType: "application/json"
-                    }
-                })
-            });
+            // Gemini API call with fallback logic
+            const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"];
+            let lastError = null;
 
-            if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.error?.message || `Gemini API Error: ${response.status}`);
+            for (const modelName of modelsToTry) {
+                try {
+                    // Try v1beta first as it's more likely to support structured output config
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: promptText }] }],
+                            generationConfig: {
+                                responseMimeType: "application/json"
+                            }
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+                        if (jsonText) break; // Success!
+                    } else {
+                        const errData = await response.json();
+                        // If model not found, try next model
+                        if (errData.error?.message?.includes("not found")) {
+                            continue;
+                        }
+                        // If JSON config not supported, try without it
+                        if (errData.error?.message?.includes("response_mime_type") || errData.error?.message?.includes("responseMimeType")) {
+                            const fallbackResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    contents: [{ parts: [{ text: promptText + "\n\nIMPORTANT: Return ONLY raw JSON, no markdown blocks." }] }]
+                                })
+                            });
+                            if (fallbackResponse.ok) {
+                                const fbData = await fallbackResponse.json();
+                                jsonText = fbData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+                                if (jsonText) break;
+                            }
+                        }
+                        throw new Error(errData.error?.message || `Gemini Error: ${response.status}`);
+                    }
+                } catch (e) {
+                    lastError = e;
+                    console.warn(`Gemini try with ${modelName} failed:`, e.message);
+                    continue; // Try next model
+                }
             }
 
-            const data = await response.json();
-            jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+            if (!jsonText) {
+                throw lastError || new Error("All Gemini models failed to generate valid content.");
+            }
         }
 
         // Strip out potential markdown code blocks if the AI included them
