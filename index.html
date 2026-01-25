@@ -11,134 +11,213 @@
 <body>
     <header>
         <div class="header-inner">
-            <h1>AI Flashcard Generator</h1>
+            <div class="header-left"></div>
+            <h1 id="pageTitle">Dashboard</h1>
             <div class="theme-toggle">
-                <label class="toggle-label" for="themeSwitch">
-                    <input id="themeSwitch" type="checkbox" />
-                    <span class="toggle-ui" aria-hidden="true"></span>
-                    <span class="toggle-text">Dark</span>
+                <input id="themeSwitch" type="checkbox" class="hidden-input" />
+                <label class="toggle-switch" for="themeSwitch">
+                    <span class="switch-ball"></span>
                 </label>
             </div>
         </div>
     </header>
 
-    <section class="categories">
-        <h2>Categories</h2>
-        <div class="cat-controls">
-            <select id="categorySelect"></select>
-            <button id="addCategoryBtn" class="btn-secondary">Add</button>
-            <button id="renameCategoryBtn" class="btn-secondary">Rename</button>
-            <button id="deleteCategoryBtn" class="btn-danger">Delete</button>
-        </div>
-    </section>
+    <div id="toastContainer" class="toast-container"></div>
 
-    <section class="input-section">
-        <textarea id="notesInput" placeholder="Paste notes or enter 'Term - Definition' pairs (offline)"></textarea>
-        <button id="generateBtn">Generate Flashcards</button>
-        <span id="genSpinner" class="spinner hidden" aria-live="polite"></span>
-    </section>
+    <main id="appContent">
+        <!-- Dashboard Page -->
+        <section id="dashboardPage" class="page active">
+            <div class="stats-overview">
+                <div class="stat-main">
+                    <div class="stat-label">🔥 Streak</div>
+                    <div id="statStreak" class="stat-value">0</div>
+                </div>
+                <div class="progress-box">
+                    <div class="progress-label">Daily Goal (<span id="progressCount">0</span>/5)</div>
+                    <div class="progress-track">
+                        <div id="progressBar" class="progress-fill" style="width:0%"></div>
+                    </div>
+                </div>
+            </div>
 
-    <section class="flashcard-section">
-        <h2>Your Flashcards</h2>
-        <div id="deckInfo" class="deck-info">0 cards</div>
-        <input id="searchInput" class="search-input" placeholder="Search cards..." />
-        <div id="flashcardContainer"></div>
-    </section>
+            <div class="dashboard-grid">
+                <div class="stat-card due" onclick="navigateTo('study')">
+                    <div id="statDue" class="stat-value">0</div>
+                    <div class="stat-label">Due Today</div>
+                </div>
+                <div class="stat-card overdue" onclick="navigateTo('study')">
+                    <div id="statOverdue" class="stat-value">0</div>
+                    <div class="stat-label">Overdue</div>
+                </div>
+                <div class="stat-card total" onclick="navigateTo('library')">
+                    <div id="statTotal" class="stat-value">0</div>
+                    <div class="stat-label">Total Cards</div>
+                </div>
+                <div class="stat-card new">
+                    <div id="statNew" class="stat-value">0</div>
+                    <div class="stat-label">New Cards</div>
+                </div>
+            </div>
 
-    <section class="stats">
-        <h2>Stats</h2>
-        <div class="stats-grid">
-            <div class="stat">
-                <div class="stat-label">Total</div>
-                <div id="statTotal" class="stat-value">0</div>
+            <div class="quick-actions">
+                <button id="startStudyBtn" class="btn-primary large" onclick="navigateTo('study')">Start
+                    Studying</button>
             </div>
-            <div class="stat">
-                <div class="stat-label">New</div>
-                <div id="statNew" class="stat-value">0</div>
+
+            <div class="detailed-stats">
+                <h3>Insights</h3>
+                <div class="stats-row">
+                    <span>Avg Ease: <strong id="statAvgEase">0</strong></span>
+                    <span>Avg Interval: <strong id="statAvgInterval">0</strong>d</span>
+                    <span>Next Due: <strong id="statNextDue">—</strong></span>
+                </div>
+                <div class="dist">
+                    <div class="dist-label">Due Distribution</div>
+                    <div class="dist-bars">
+                        <div class="dist-bar overdue" id="distOverdue" style="width:0%"></div>
+                        <div class="dist-bar today" id="distToday" style="width:0%"></div>
+                        <div class="dist-bar week" id="distWeek" style="width:0%"></div>
+                        <div class="dist-bar later" id="distLater" style="width:0%"></div>
+                    </div>
+                </div>
             </div>
-            <div class="stat">
-                <div class="stat-label">Due</div>
-                <div id="statDue" class="stat-value">0</div>
+        </section>
+
+        <!-- Library Page -->
+        <section id="libraryPage" class="page hidden">
+            <div class="page-header-actions">
+                <div class="category-manager">
+                    <select id="categorySelect"></select>
+                    <div class="cat-btns">
+                        <button id="addCategoryBtn" class="btn-icon" title="Add Category">+</button>
+                        <button id="renameCategoryBtn" class="btn-icon" title="Rename Category">✎</button>
+                        <button id="deleteCategoryBtn" class="btn-icon btn-danger" title="Delete Category">🗑</button>
+                    </div>
+                </div>
+                <input id="searchInput" class="search-input" placeholder="Search cards..." />
             </div>
-            <div class="stat">
-                <div class="stat-label">Overdue</div>
-                <div id="statOverdue" class="stat-value">0</div>
+
+            <div id="deckInfo" class="deck-info">0 cards</div>
+            <div id="flashcardContainer"></div>
+
+            <div class="library-actions">
+                <button id="shuffleDeckBtn" class="btn-secondary">Shuffle</button>
+                <button id="clearDeckBtn" class="btn-danger">Clear Deck</button>
             </div>
-            <div class="stat">
-                <div class="stat-label">Avg Ease</div>
-                <div id="statAvgEase" class="stat-value">0</div>
+        </section>
+
+        <!-- Create Page -->
+        <section id="createPage" class="page hidden">
+            <div class="create-container">
+                <div class="create-card ai-gen">
+                    <div class="card-badge">AI Powered</div>
+                    <h2>Smart Generation</h2>
+                    <p class="subtitle">Paste your notes, articles, or text. Our AI will extract concepts for you.</p>
+                    <textarea id="notesInput" placeholder="Paste your notes here..."></textarea>
+                    <div class="create-btns">
+                        <button id="generateBtn" class="btn-primary">Generate Flashcards</button>
+                        <span id="genSpinner" class="spinner hidden" aria-live="polite"></span>
+                    </div>
+                </div>
+
+                <div class="create-divider">
+                    <span>OR</span>
+                </div>
+
+                <div class="create-card manual">
+                    <h2>Manual Entry</h2>
+                    <p class="subtitle">Add cards one by one to your deck.</p>
+                    <button id="manualAddBtn" class="btn-secondary large-btn" onclick="quickAddCard()">
+                        + Add Single Card
+                    </button>
+                </div>
             </div>
-            <div class="stat">
-                <div class="stat-label">Avg Interval (d)</div>
-                <div id="statAvgInterval" class="stat-value">0</div>
+        </section>
+
+        <!-- Study Page -->
+        <section id="studyPage" class="page hidden">
+            <div class="study-progress-container">
+                <div class="study-progress-track">
+                    <div id="studyProgressBar" class="study-progress-fill" style="width:0%"></div>
+                </div>
+                <div id="studyProgressText" class="study-progress-text">0/0</div>
             </div>
-            <div class="stat">
-                <div class="stat-label">Next Due</div>
-                <div id="statNextDue" class="stat-value">—</div>
+            <div id="studySection">
+                <div class="study-card-container">
+                    <div id="studyCard"></div>
+                </div>
+                <div class="study-controls">
+                    <div class="rating-buttons">
+                        <button class="diff-btn easy" data-diff="easy">Easy</button>
+                        <button class="diff-btn medium" data-diff="medium">Medium</button>
+                        <button class="diff-btn hard" data-diff="hard">Hard</button>
+                    </div>
+                    <div class="study-extras">
+                        <button id="speakBtn" class="btn-icon-large">🔊</button>
+                        <label class="toggle-label mini" for="ttsAutoPlay">
+                            <input id="ttsAutoPlay" type="checkbox" />
+                            <span class="toggle-ui" aria-hidden="true"></span>
+                            <span class="toggle-text">Auto-Play TTS</span>
+                        </label>
+                    </div>
+                </div>
             </div>
-            <div class="stat">
-                <div class="stat-label">🔥 Streak</div>
-                <div id="statStreak" class="stat-value">0</div>
+        </section>
+
+        <!-- Settings Page -->
+        <section id="settingsPage" class="page hidden">
+            <div class="settings-group">
+                <h3>Data Management</h3>
+                <div class="settings-grid">
+                    <button id="saveDeckBtn" class="btn-secondary">Save to Local</button>
+                    <button id="loadDeckBtn" class="btn-secondary">Load from Local</button>
+                    <button id="exportDeckBtn" class="btn-secondary">Export JSON</button>
+                    <div class="import-container">
+                        <label for="importJSON" class="btn-secondary import-label">Import JSON</label>
+                        <input type="file" id="importJSON" accept="application/json" class="hidden" />
+                    </div>
+                </div>
+            </div>
+            <div class="settings-group">
+                <h3>App Info</h3>
+                <p>AI Flashcard Generator v2.0</p>
+                <p>A simpler, cleaner way to study.</p>
+            </div>
+        </section>
+    </main>
+
+    <nav class="bottom-nav">
+        <button class="nav-item active" onclick="navigateTo('dashboard')">
+            <span class="nav-icon">🏠</span>
+            <span class="nav-label">Home</span>
+        </button>
+        <button class="nav-item" onclick="navigateTo('library')">
+            <span class="nav-icon">📚</span>
+            <span class="nav-label">Library</span>
+        </button>
+        <button class="nav-item plus" onclick="navigateTo('create')">
+            <span class="nav-icon">+</span>
+        </button>
+        <button class="nav-item" onclick="navigateTo('study')">
+            <span class="nav-icon">🧠</span>
+            <span class="nav-label">Study</span>
+        </button>
+        <button class="nav-item" onclick="navigateTo('settings')">
+            <span class="nav-icon">⚙️</span>
+            <span class="nav-label">Settings</span>
+        </button>
+    </nav>
+
+    <!-- Modals -->
+    <div id="modalOverlay" class="modal-overlay hidden">
+        <div class="modal">
+            <h3 id="modalTitle">Modal Title</h3>
+            <div id="modalBody" class="modal-body"></div>
+            <div class="modal-footer">
+                <button id="modalCancelBtn" class="btn-secondary">Cancel</button>
+                <button id="modalConfirmBtn" class="btn-primary">Confirm</button>
             </div>
         </div>
-        <div class="progress-container">
-            <div class="progress-label">Daily Progress (<span id="progressCount">0</span>/5)</div>
-            <div class="progress-track">
-                <div id="progressBar" class="progress-fill" style="width:0%"></div>
-            </div>
-        </div>
-        <div class="ratings">
-            <span class="rating-pill">Easy: <span id="statRatingsEasy">0</span></span>
-            <span class="rating-pill">Medium: <span id="statRatingsMedium">0</span></span>
-            <span class="rating-pill">Hard: <span id="statRatingsHard">0</span></span>
-        </div>
-        <div class="dist">
-            <div class="dist-label">Due Distribution</div>
-            <div class="dist-bars">
-                <div class="dist-bar overdue" id="distOverdue" style="width:0%"></div>
-                <div class="dist-bar today" id="distToday" style="width:0%"></div>
-                <div class="dist-bar week" id="distWeek" style="width:0%"></div>
-                <div class="dist-bar later" id="distLater" style="width:0%"></div>
-            </div>
-        </div>
-    </section>
-
-    <section class="actions">
-        <button id="studyModeBtn">Study Mode</button>
-        <button id="saveDeckBtn">Save Deck</button>
-        <button id="loadDeckBtn">Load Deck</button>
-        <button id="exportDeckBtn">Export JSON</button>
-        <button id="shuffleDeckBtn" class="btn-secondary">Shuffle</button>
-        <button id="clearDeckBtn" class="btn-danger">Clear Deck</button>
-
-        <label for="importJSON" class="import-label">Import JSON</label>
-        <input type="file" id="importJSON" accept="application/json" />
-    </section>
-
-    <section id="studySection" class="hidden">
-        <div class="study-header">
-            <h2>Study Mode</h2>
-            <div class="study-settings">
-                <label class="toggle-label mini" for="ttsAutoPlay">
-                    <input id="ttsAutoPlay" type="checkbox" />
-                    <span class="toggle-ui" aria-hidden="true"></span>
-                    <span class="toggle-text">Auto-Play TTS</span>
-                </label>
-            </div>
-        </div>
-        <div id="studyCard"></div>
-        <div class="study-buttons">
-            <button class="diff-btn" data-diff="easy">Easy</button>
-            <button class="diff-btn" data-diff="medium">Medium</button>
-            <button class="diff-btn" data-diff="hard">Hard</button>
-            <button id="speakBtn" class="btn-secondary">🔊 Speak</button>
-        </div>
-    </section>
-
-    <div class="mobile-toolbar">
-        <button id="mobileStudyBtn">Study</button>
-        <button id="mobileShuffleBtn" class="btn-secondary">Shuffle</button>
-        <button id="mobileAddBtn" class="btn-success">Add Card</button>
     </div>
 
     <script src="script.js"></script>

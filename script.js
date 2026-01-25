@@ -23,6 +23,27 @@ function applyTheme(theme) {
 }
 
 /**
+ * Toast Notification System
+ */
+function showToast(message, type = "info") {
+    const container = document.getElementById("toastContainer");
+    if (!container) return;
+
+    const toast = document.createElement("div");
+    toast.className = `toast ${type}`;
+    const icon = type === "success" ? "✅" : (type === "error" ? "❌" : "ℹ️");
+    toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.opacity = "0";
+        toast.style.transform = "translateY(-10px)";
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+/**
  * Load theme preference from localStorage (or system)
  */
 function loadTheme() {
@@ -46,6 +67,51 @@ function toggleTheme() {
     localStorage.setItem(THEME_KEY, newTheme);
 }
 
+/**
+ * Navigation logic for SPA
+ */
+function navigateTo(pageId) {
+    // Update active page
+    document.querySelectorAll('.page').forEach(page => {
+        page.classList.add('hidden');
+        page.classList.remove('active');
+    });
+    const targetPage = document.getElementById(pageId + 'Page');
+    if (targetPage) {
+        targetPage.classList.remove('hidden');
+        targetPage.classList.add('active');
+    }
+
+    // Update nav items
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('active');
+        const label = item.querySelector('.nav-label');
+        if (label && label.innerText.toLowerCase() === pageId) {
+            item.classList.add('active');
+        } else if (!label && pageId === 'create') {
+            // Special case for the plus button
+            item.classList.add('active');
+        } else if (label && pageId === 'dashboard' && label.innerText === 'Home') {
+            item.classList.add('active');
+        }
+    });
+
+    // Update header title
+    const titles = {
+        'dashboard': 'Dashboard',
+        'library': 'My Library',
+        'create': 'Create Cards',
+        'study': 'Study Mode',
+        'settings': 'Settings'
+    };
+    document.getElementById('pageTitle').innerText = titles[pageId] || 'AI Flashcards';
+
+    // Auto-actions when entering pages
+    if (pageId === 'study') {
+        startStudyMode();
+    }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     // wire up toggle and load saved theme
     const themeSwitch = document.getElementById("themeSwitch");
@@ -54,6 +120,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // initialize app after theme is loaded
     initApp();
+
+    // Initial navigation to dashboard
+    navigateTo('dashboard');
+
+    // Global Keyboard Shortcuts
+    document.addEventListener("keydown", (e) => {
+        const studyActive = document.getElementById("studyPage").classList.contains("active");
+        if (studyActive) {
+            if (e.code === "Space") {
+                e.preventDefault();
+                const card = document.getElementById("studyCard");
+                if (card) card.click();
+            } else if (e.key === "1") {
+                rateCurrentCard("hard");
+            } else if (e.key === "2") {
+                rateCurrentCard("medium");
+            } else if (e.key === "3") {
+                rateCurrentCard("easy");
+            }
+        }
+    });
 });
 
 /* ========== APP: FLASHCARDS (existing starter code) ========== */
@@ -71,6 +158,7 @@ let ratingCounts = { easy: 0, medium: 0, hard: 0 };
 let currentStreak = 0;
 let lastStudyDate = null;
 let dailySessionCount = 0;
+let studySessionStats = { total: 0, current: 0 };
 
 const CATEGORY_KEY = "flashcards_categories";
 const SELECTED_CATEGORY_KEY = "flashcards_selected_category";
@@ -340,24 +428,44 @@ function escapeHtml(str = "") {
 // Study Mode
 // ---------------------------
 function startStudyMode() {
-    if (flashcards.length === 0) return alert("No flashcards!");
-    document.getElementById("studySection").classList.remove("hidden");
-    const next = getNextDueCard();
-    if (!next) {
-        alert("No cards due. Shuffle or adjust deck to study.");
-        document.getElementById("studySection").classList.add("hidden");
+    if (flashcards.length === 0) {
+        showToast("No flashcards found!", "info");
+        navigateTo('create');
         return;
     }
+    const next = getNextDueCard();
+    if (!next) {
+        showToast("All caught up! No cards due.", "success");
+        navigateTo('dashboard');
+        return;
+    }
+
+    // Initialize session stats
+    const totalDue = flashcards.filter(c => (!selectedCategoryId || c.categoryId === selectedCategoryId) && (!c.due || c.due <= Date.now())).length;
+    studySessionStats = { total: totalDue, current: 0 };
+    updateStudyProgress();
+
     currentCardId = next.id;
     showStudyCard();
     setupStudyGestures();
+}
+
+function updateStudyProgress() {
+    const bar = document.getElementById("studyProgressBar");
+    const text = document.getElementById("studyProgressText");
+    if (!bar || !text) return;
+
+    studySessionStats.current = Math.min(studySessionStats.current, studySessionStats.total);
+    const percent = studySessionStats.total > 0 ? (studySessionStats.current / studySessionStats.total) * 100 : 0;
+    bar.style.width = `${percent}%`;
+    text.innerText = `${studySessionStats.current}/${studySessionStats.total}`;
 }
 
 function showStudyCard() {
     const card = flashcards.find(c => c.id === currentCardId) || getNextDueCard();
     if (!card) {
         alert("Study session complete!");
-        document.getElementById("studySection").classList.add("hidden");
+        navigateTo('dashboard');
         return;
     }
     document.getElementById("studyCard").innerHTML = `
@@ -475,7 +583,7 @@ function initApp() {
         }
     });
 
-    document.getElementById("studyModeBtn").addEventListener("click", startStudyMode);
+    // document.getElementById("studyModeBtn").addEventListener("click", startStudyMode);
 
     document.getElementById("saveDeckBtn").addEventListener("click", () => {
         saveCurrentDeck();
@@ -536,25 +644,16 @@ function initApp() {
         renderFlashcards();
     });
 
-    const search = document.getElementById("searchInput");
     search.addEventListener("input", (e) => {
         filterText = e.target.value.toLowerCase();
         renderFlashcards();
     });
-    const mobileStudy = document.getElementById("mobileStudyBtn");
-    const mobileShuffle = document.getElementById("mobileShuffleBtn");
-    const mobileAdd = document.getElementById("mobileAddBtn");
-    if (mobileStudy) mobileStudy.addEventListener("click", startStudyMode);
-    if (mobileShuffle) mobileShuffle.addEventListener("click", () => {
-        if (flashcards.length < 2) return;
-        for (let i = flashcards.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [flashcards[i], flashcards[j]] = [flashcards[j], flashcards[i]];
-        }
-        saveCurrentDeck();
-        renderFlashcards();
-    });
-    if (mobileAdd) mobileAdd.addEventListener("click", quickAddCard);
+
+    // Mobile toolbar has been replaced by bottom-nav, but we might want to keep the logic if needed
+    // However, the IDs have changed or elements were removed.
+    // Let's ensure the new study button on dashboard works
+    const startStudyBtn = document.getElementById("startStudyBtn");
+    if (startStudyBtn) startStudyBtn.onclick = () => navigateTo('study');
 
     document.getElementById("speakBtn").addEventListener("click", () => {
         const card = flashcards.find(c => c.id === currentCardId);
@@ -627,10 +726,14 @@ function rateCurrentCard(diff = "medium") {
     else ratingCounts.medium = (ratingCounts.medium || 0) + 1;
     saveRatingCounts();
     updateStats();
+
+    studySessionStats.current++;
+    updateStudyProgress();
+
     const next = getNextDueCard();
     if (!next) {
-        alert("Study session complete!");
-        document.getElementById("studySection").classList.add("hidden");
+        showToast("Study session complete!", "success");
+        navigateTo('dashboard');
         return;
     }
     currentCardId = next.id;
