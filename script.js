@@ -3,11 +3,16 @@
 // ================================
 const OPENAI_KEY_STORAGE = "flashcards_openai_api_key";
 const GEMINI_KEY_STORAGE = "flashcards_gemini_api_key";
+const GROQ_KEY_STORAGE = "flashcards_groq_api_key";
+const OLLAMA_MODEL_STORAGE = "flashcards_ollama_model";
 const PROVIDER_STORAGE = "flashcards_ai_provider";
 
 let OPENAI_API_KEY = localStorage.getItem(OPENAI_KEY_STORAGE) || "";
 let GEMINI_API_KEY = localStorage.getItem(GEMINI_KEY_STORAGE) || "";
+let GROQ_API_KEY = localStorage.getItem(GROQ_KEY_STORAGE) || "";
+let OLLAMA_MODEL = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "llama3";
 let AI_PROVIDER = localStorage.getItem(PROVIDER_STORAGE) || "gemini";
+prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 
 /* ========== THEME (DARK MODE) ========== */
 const THEME_KEY = "flashcards_theme"; // "dark" or "light"
@@ -179,9 +184,13 @@ async function generateFlashcardsFromText(text) {
     const heuristic = parseSmartFlashcards(text);
 
     // Check if we have the necessary credentials
-    const currentKey = (AI_PROVIDER === "openai") ? OPENAI_API_KEY : GEMINI_API_KEY;
+    let currentKey = "";
+    if (AI_PROVIDER === "openai") currentKey = OPENAI_API_KEY;
+    else if (AI_PROVIDER === "gemini") currentKey = GEMINI_API_KEY;
+    else if (AI_PROVIDER === "groq") currentKey = GROQ_API_KEY;
+    else if (AI_PROVIDER === "ollama") currentKey = "local"; // Dummy for local check
 
-    if (!currentKey || currentKey.trim() === "") {
+    if (AI_PROVIDER !== "ollama" && (!currentKey || currentKey.trim() === "")) {
         if (forceAI) showToast(`${AI_PROVIDER.toUpperCase()} API Key missing! Check Settings.`, "error");
         return { cards: heuristic };
     }
@@ -235,6 +244,46 @@ ${text}`;
 
             const data = await response.json();
             jsonText = data.choices?.[0]?.message?.content ?? "";
+        } else if (AI_PROVIDER === "groq") {
+            const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${GROQ_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: "llama-3.3-70b-versatile",
+                    messages: [{ role: "user", content: promptText }],
+                    response_format: { type: "json_object" },
+                    temperature: 0.4
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error?.message || `Groq API Error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            jsonText = data.choices?.[0]?.message?.content ?? "";
+        } else if (AI_PROVIDER === "ollama") {
+            const response = await fetch("http://localhost:11434/api/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    model: OLLAMA_MODEL,
+                    prompt: promptText,
+                    format: "json",
+                    stream: false
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Ollama Error: ${response.status}. Make sure Ollama is running correctly on localhost:11434.`);
+            }
+
+            const data = await response.json();
+            jsonText = data.response ?? "";
         } else {
             // Gemini API call with highly resilient fallback logic
             // Strategy: Try v1beta (JSON) -> v1 (Flash) -> v1 (Pro)
@@ -719,20 +768,25 @@ function initApp() {
     const saveOpenaiKeyBtn = document.getElementById("saveKeyBtn");
     const geminiKeyInput = document.getElementById("geminiKeyInput");
     const saveGeminiKeyBtn = document.getElementById("saveGeminiKeyBtn");
+    const groqKeyInput = document.getElementById("groqKeyInput");
+    const saveGroqKeyBtn = document.getElementById("saveGroqKeyBtn");
+    const ollamaModelInput = document.getElementById("ollamaModelInput");
+    const saveOllamaBtn = document.getElementById("saveOllamaBtn");
     const aiWarning = document.getElementById("aiMissingWarning");
 
     const updateUIPisibility = () => {
         const p = providerSelect?.value || "gemini";
-        const opGroup = document.getElementById("openaiKeyGroup");
-        const geGroup = document.getElementById("geminiKeyGroup");
+        const groups = {
+            openai: document.getElementById("openaiKeyGroup"),
+            gemini: document.getElementById("geminiKeyGroup"),
+            groq: document.getElementById("groqKeyGroup"),
+            ollama: document.getElementById("ollamaGroup")
+        };
 
-        if (p === "openai") {
-            opGroup?.classList.remove("hidden");
-            geGroup?.classList.add("hidden");
-        } else {
-            opGroup?.classList.add("hidden");
-            geGroup?.classList.remove("hidden");
-        }
+        Object.keys(groups).forEach(key => {
+            if (key === p) groups[key]?.classList.remove("hidden");
+            else groups[key]?.classList.add("hidden");
+        });
     };
 
     if (providerSelect) {
@@ -747,9 +801,16 @@ function initApp() {
 
     if (openaiKeyInput) openaiKeyInput.value = OPENAI_API_KEY;
     if (geminiKeyInput) geminiKeyInput.value = GEMINI_API_KEY;
+    if (groqKeyInput) groqKeyInput.value = GROQ_API_KEY;
+    if (ollamaModelInput) ollamaModelInput.value = OLLAMA_MODEL;
 
     const updateAIWarning = () => {
-        const currentKey = (AI_PROVIDER === "openai") ? OPENAI_API_KEY : GEMINI_API_KEY;
+        let currentKey = "";
+        if (AI_PROVIDER === "openai") currentKey = OPENAI_API_KEY;
+        else if (AI_PROVIDER === "gemini") currentKey = GEMINI_API_KEY;
+        else if (AI_PROVIDER === "groq") currentKey = GROQ_API_KEY;
+        else if (AI_PROVIDER === "ollama") currentKey = "ollama";
+
         if (!currentKey) {
             aiWarning?.classList.remove("hidden");
         } else {
@@ -761,21 +822,33 @@ function initApp() {
     updateAIWarning();
 
     saveOpenaiKeyBtn?.addEventListener("click", () => {
-        const val = openaiKeyInput.value.trim();
-        OPENAI_API_KEY = val;
-        if (!val) localStorage.removeItem(OPENAI_KEY_STORAGE);
-        else localStorage.setItem(OPENAI_KEY_STORAGE, val);
+        OPENAI_API_KEY = (openaiKeyInput?.value || "").trim();
+        if (!OPENAI_API_KEY) localStorage.removeItem(OPENAI_KEY_STORAGE);
+        else localStorage.setItem(OPENAI_KEY_STORAGE, OPENAI_API_KEY);
         showToast("OpenAI Key saved!", "success");
         updateAIWarning();
     });
 
     saveGeminiKeyBtn?.addEventListener("click", () => {
-        const val = geminiKeyInput.value.trim();
-        GEMINI_API_KEY = val;
-        if (!val) localStorage.removeItem(GEMINI_KEY_STORAGE);
-        else localStorage.setItem(GEMINI_KEY_STORAGE, val);
+        GEMINI_API_KEY = (geminiKeyInput?.value || "").trim();
+        if (!GEMINI_API_KEY) localStorage.removeItem(GEMINI_KEY_STORAGE);
+        else localStorage.setItem(GEMINI_KEY_STORAGE, GEMINI_API_KEY);
         showToast("Gemini Key saved!", "success");
         updateAIWarning();
+    });
+
+    saveGroqKeyBtn?.addEventListener("click", () => {
+        GROQ_API_KEY = (groqKeyInput?.value || "").trim();
+        if (!GROQ_API_KEY) localStorage.removeItem(GROQ_KEY_STORAGE);
+        else localStorage.setItem(GROQ_KEY_STORAGE, GROQ_API_KEY);
+        showToast("Groq Key saved!", "success");
+        updateAIWarning();
+    });
+
+    saveOllamaBtn?.addEventListener("click", () => {
+        OLLAMA_MODEL = (ollamaModelInput?.value || "").trim() || "llama3";
+        localStorage.setItem(OLLAMA_MODEL_STORAGE, OLLAMA_MODEL);
+        showToast("Ollama Model saved!", "success");
     });
 
     document.getElementById("clearDeckBtn").addEventListener("click", () => {

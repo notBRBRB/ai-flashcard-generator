@@ -184,6 +184,8 @@
                         <select id="aiProviderSelect" class="text-input">
                             <option value="gemini">Google Gemini (Free Tier)</option>
                             <option value="openai">OpenAI (GPT-4o-mini)</option>
+                            <option value="groq">Groq (Ultra-Fast Free)</option>
+                            <option value="ollama">Local AI (Ollama - No Key)</option>
                         </select>
                     </div>
                     <div class="input-group" id="openaiKeyGroup">
@@ -201,9 +203,28 @@
                             <button id="saveGeminiKeyBtn" class="btn-icon">💾</button>
                         </div>
                     </div>
+                    <div class="input-group" id="groqKeyGroup">
+                        <label for="groqKeyInput">Groq API Key</label>
+                        <div class="api-key-wrapper">
+                            <input type="password" id="groqKeyInput" placeholder="gsk_..." class="text-input" />
+                            <button id="saveGroqKeyBtn" class="btn-icon">💾</button>
+                        </div>
+                        <p class="input-hint"><a href="https://console.groq.com/keys" target="_blank"
+                                style="color:var(--accent)">Get free Groq Key here</a></p>
+                    </div>
+                    <div class="input-group" id="ollamaGroup">
+                        <label for="ollamaModelInput">Ollama Model</label>
+                        <div class="api-key-wrapper">
+                            <input type="text" id="ollamaModelInput" placeholder="llama3" class="text-input"
+                                value="llama3" />
+                            <button id="saveOllamaBtn" class="btn-icon">💾</button>
+                        </div>
+                        <p class="input-hint">Requires <a href="https://ollama.com/" target="_blank"
+                                style="color:var(--accent)">Ollama</a> running locally</p>
+                    </div>
                     <p class="input-hint">Keys are stored locally in your browser. <a
                             href="https://aistudio.google.com/app/apikey" target="_blank"
-                            style="color:var(--accent)">Get Gemini Key here (Free)</a></p>
+                            style="color:var(--accent)">Get Gemini Key here</a></p>
                 </div>
             </div>
             <div class="settings-group">
