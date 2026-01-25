@@ -1,51 +1,131 @@
-// ================================
-//  AI API KEY MANAGEMENT
-// ================================
-const OPENAI_KEY_STORAGE = "flashcards_openai_api_key";
-const GEMINI_KEY_STORAGE = "flashcards_gemini_api_key";
-const GROQ_KEY_STORAGE = "flashcards_groq_api_key";
-const OLLAMA_MODEL_STORAGE = "flashcards_ollama_model";
-const PROVIDER_STORAGE = "flashcards_ai_provider";
-
-let OPENAI_API_KEY = localStorage.getItem(OPENAI_KEY_STORAGE) || "";
-let GEMINI_API_KEY = localStorage.getItem(GEMINI_KEY_STORAGE) || "";
-let GROQ_API_KEY = localStorage.getItem(GROQ_KEY_STORAGE) || "";
-let OLLAMA_MODEL = localStorage.getItem(OLLAMA_MODEL_STORAGE) || "llama3";
-let AI_PROVIDER = localStorage.getItem(PROVIDER_STORAGE) || "gemini";
-prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-/* ========== THEME (DARK MODE) ========== */
-const THEME_KEY = "flashcards_theme"; // "dark" or "light"
-const root = document.documentElement;
-
 /**
- * Apply theme to :root by setting data-theme attribute
- * Accepts "dark" or "light"
+ * AI Flashcard Generator - Core Application Script
+ * Centralized State Management Version
  */
-function applyTheme(theme) {
-    if (theme === "dark") {
-        root.setAttribute("data-theme", "dark");
-        document.getElementById("themeSwitch").checked = true;
-    } else {
-        root.removeAttribute("data-theme");
-        document.getElementById("themeSwitch").checked = false;
+
+// ================================
+//  APP STATE (Single Source of Truth)
+// ================================
+const AppState = {
+    categories: [],
+    selectedCategoryId: null,
+    flashcards: [], // Cards for selected category
+    preferences: {
+        provider: localStorage.getItem("flashcards_ai_provider") || "gemini",
+        openaiKey: localStorage.getItem("flashcards_openai_api_key") || "",
+        geminiKey: localStorage.getItem("flashcards_gemini_api_key") || "",
+        groqKey: localStorage.getItem("flashcards_groq_api_key") || "",
+        ollamaModel: localStorage.getItem("flashcards_ollama_model") || "llama3",
+        theme: localStorage.getItem("flashcards_theme") || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+        ttsAutoPlay: false
+    },
+    stats: {
+        streak: parseInt(localStorage.getItem("flashcards_streak")) || 0,
+        lastStudyDate: localStorage.getItem("flashcards_last_date"),
+        dailySessionCount: parseInt(localStorage.getItem("flashcards_session_count")) || 0,
+        ratingCounts: { easy: 0, medium: 0, hard: 0 }, // Loaded per category
+        sessionTotal: 0,
+        sessionCurrent: 0
+    },
+    ui: {
+        generating: false,
+        currentCardId: null,
+        filterText: ""
     }
+};
+
+// Storage Keys
+const CATEGORY_KEY = "flashcards_categories";
+const SELECTED_CATEGORY_KEY = "flashcards_selected_category";
+
+// ================================
+//  PERSISTENCE ENGINE
+// ================================
+
+function saveAll() {
+    console.log("Saving App State...");
+    localStorage.setItem(CATEGORY_KEY, JSON.stringify(AppState.categories));
+    localStorage.setItem(SELECTED_CATEGORY_KEY, AppState.selectedCategoryId);
+
+    if (AppState.selectedCategoryId) {
+        localStorage.setItem(`flashcards_${AppState.selectedCategoryId}`, JSON.stringify(AppState.flashcards));
+        localStorage.setItem(`flashcards_ratings_${AppState.selectedCategoryId}`, JSON.stringify(AppState.stats.ratingCounts));
+    }
+
+    localStorage.setItem("flashcards_ai_provider", AppState.preferences.provider);
+    localStorage.setItem("flashcards_openai_api_key", AppState.preferences.openaiKey);
+    localStorage.setItem("flashcards_gemini_api_key", AppState.preferences.geminiKey);
+    localStorage.setItem("flashcards_groq_api_key", AppState.preferences.groqKey);
+    localStorage.setItem("flashcards_ollama_model", AppState.preferences.ollamaModel);
+    localStorage.setItem("flashcards_theme", AppState.preferences.theme);
+
+    localStorage.setItem("flashcards_streak", AppState.stats.streak);
+    localStorage.setItem("flashcards_last_date", AppState.stats.lastStudyDate);
+    localStorage.setItem("flashcards_session_count", AppState.stats.dailySessionCount);
 }
 
-/**
- * Toast Notification System
- */
+function loadAll() {
+    console.log("Loading App State...");
+    const rawCats = localStorage.getItem(CATEGORY_KEY);
+    AppState.categories = rawCats ? JSON.parse(rawCats) : [];
+    AppState.selectedCategoryId = localStorage.getItem(SELECTED_CATEGORY_KEY);
+
+    if (AppState.categories.length === 0) {
+        const id = genId();
+        AppState.categories = [{ id, name: "General" }];
+        AppState.selectedCategoryId = id;
+    }
+
+    if (!AppState.categories.find(c => c.id === AppState.selectedCategoryId)) {
+        AppState.selectedCategoryId = AppState.categories[0].id;
+    }
+
+    loadDeck(AppState.selectedCategoryId);
+}
+
+function loadDeck(id) {
+    if (!id) return;
+    const rawCards = localStorage.getItem(`flashcards_${id}`);
+    AppState.flashcards = rawCards ? normalizeFlashcards(JSON.parse(rawCards)) : [];
+
+    const rawRatings = localStorage.getItem(`flashcards_ratings_${id}`);
+    AppState.stats.ratingCounts = rawRatings ? JSON.parse(rawRatings) : { easy: 0, medium: 0, hard: 0 };
+}
+
+// ================================
+//  THEME ENGINE
+// ================================
+
+function applyTheme(theme) {
+    const root = document.documentElement;
+    if (theme === "dark") {
+        root.setAttribute("data-theme", "dark");
+    } else {
+        root.removeAttribute("data-theme");
+    }
+    AppState.preferences.theme = theme;
+    const themeSwitch = document.getElementById("themeSwitch");
+    if (themeSwitch) themeSwitch.checked = (theme === "dark");
+}
+
+function toggleTheme() {
+    const newTheme = AppState.preferences.theme === "dark" ? "light" : "dark";
+    applyTheme(newTheme);
+    saveAll();
+}
+
+// ================================
+//  UI NOTIFICATIONS
+// ================================
+
 function showToast(message, type = "info") {
     const container = document.getElementById("toastContainer");
     if (!container) return;
-
     const toast = document.createElement("div");
     toast.className = `toast ${type}`;
     const icon = type === "success" ? "✅" : (type === "error" ? "❌" : "ℹ️");
     toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
-
     container.appendChild(toast);
-
     setTimeout(() => {
         toast.style.opacity = "0";
         toast.style.transform = "translateY(-10px)";
@@ -53,35 +133,11 @@ function showToast(message, type = "info") {
     }, 3000);
 }
 
-/**
- * Load theme preference from localStorage (or system)
- */
-function loadTheme() {
-    const saved = localStorage.getItem(THEME_KEY);
-    if (saved === "dark" || saved === "light") {
-        applyTheme(saved);
-        return;
-    }
-    // If no saved preference, use system preference
-    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    applyTheme(prefersDark ? "dark" : "light");
-}
+// ================================
+//  NAVIGATION
+// ================================
 
-/**
- * Toggle theme and persist
- */
-function toggleTheme() {
-    const isDark = root.getAttribute("data-theme") === "dark";
-    const newTheme = isDark ? "light" : "dark";
-    applyTheme(newTheme);
-    localStorage.setItem(THEME_KEY, newTheme);
-}
-
-/**
- * Navigation logic for SPA
- */
 function navigateTo(pageId) {
-    // Update active page
     document.querySelectorAll('.page').forEach(page => {
         page.classList.add('hidden');
         page.classList.remove('active');
@@ -92,21 +148,18 @@ function navigateTo(pageId) {
         targetPage.classList.add('active');
     }
 
-    // Update nav items
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
         const label = item.querySelector('.nav-label');
         if (label && label.innerText.toLowerCase() === pageId) {
             item.classList.add('active');
         } else if (!label && pageId === 'create') {
-            // Special case for the plus button
             item.classList.add('active');
         } else if (label && pageId === 'dashboard' && label.innerText === 'Home') {
             item.classList.add('active');
         }
     });
 
-    // Update header title
     const titles = {
         'dashboard': 'Dashboard',
         'library': 'My Library',
@@ -116,382 +169,51 @@ function navigateTo(pageId) {
     };
     document.getElementById('pageTitle').innerText = titles[pageId] || 'AI Flashcards';
 
-    // Auto-actions when entering pages
-    if (pageId === 'study') {
-        startStudyMode();
-    }
+    if (pageId === 'study') startStudyMode();
+    if (pageId === 'library') renderLibrary();
+    if (pageId === 'dashboard') updateDashboardStats();
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-    // wire up toggle and load saved theme
-    const themeSwitch = document.getElementById("themeSwitch");
-    loadTheme();
-    themeSwitch.addEventListener("change", toggleTheme);
+// ================================
+//  LIBRARY & CATEGORY SYNC
+// ================================
 
-    // initialize app after theme is loaded
-    initApp();
+function renderLibrary() {
+    renderCategoryOptions();
+    renderFlashcards();
+    updateDeckInfo();
+}
 
-    // Initial navigation to dashboard
-    navigateTo('dashboard');
-
-    // Global Keyboard Shortcuts
-    document.addEventListener("keydown", (e) => {
-        const studyActive = document.getElementById("studyPage").classList.contains("active");
-        if (studyActive) {
-            if (e.code === "Space") {
-                e.preventDefault();
-                const card = document.getElementById("studyCard");
-                if (card) card.click();
-            } else if (e.key === "1") {
-                rateCurrentCard("hard");
-            } else if (e.key === "2") {
-                rateCurrentCard("medium");
-            } else if (e.key === "3") {
-                rateCurrentCard("easy");
-            }
-        }
+function renderCategoryOptions() {
+    const sel = document.getElementById("categorySelect");
+    if (!sel) return;
+    sel.innerHTML = "";
+    AppState.categories.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c.id;
+        opt.textContent = c.name;
+        if (c.id === AppState.selectedCategoryId) opt.selected = true;
+        sel.appendChild(opt);
     });
-});
-
-/* ========== APP: FLASHCARDS (existing starter code) ========== */
-
-// Deck data
-let flashcards = [];
-let studyIndex = 0;
-let generating = false;
-let currentCardId = null;
-let filterText = "";
-let studyGesturesSetup = false;
-let categories = [];
-let selectedCategoryId = null;
-let ratingCounts = { easy: 0, medium: 0, hard: 0 };
-let currentStreak = 0;
-let lastStudyDate = null;
-let dailySessionCount = 0;
-let studySessionStats = { total: 0, current: 0 };
-
-const CATEGORY_KEY = "flashcards_categories";
-const SELECTED_CATEGORY_KEY = "flashcards_selected_category";
-const STREAK_KEY = "flashcards_streak";
-const LAST_DATE_KEY = "flashcards_last_date";
-const SESSION_COUNT_KEY = "flashcards_session_count";
-
-// ---------------------------
-// AI: Generate Flashcards
-// ---------------------------
-async function generateFlashcardsFromText(text) {
-    const forceAI = document.getElementById("forceAI")?.checked || false;
-    const heuristic = parseSmartFlashcards(text);
-
-    // Check if we have the necessary credentials
-    let currentKey = "";
-    if (AI_PROVIDER === "openai") currentKey = OPENAI_API_KEY;
-    else if (AI_PROVIDER === "gemini") currentKey = GEMINI_API_KEY;
-    else if (AI_PROVIDER === "groq") currentKey = GROQ_API_KEY;
-    else if (AI_PROVIDER === "ollama") currentKey = "local"; // Dummy for local check
-
-    if (AI_PROVIDER !== "ollama" && (!currentKey || currentKey.trim() === "")) {
-        if (forceAI) showToast(`${AI_PROVIDER.toUpperCase()} API Key missing! Check Settings.`, "error");
-        return { cards: heuristic };
-    }
-
-    // If not forcing AI and text is short, use heuristic
-    if (!forceAI && text.length < 300 && heuristic.length >= 2) {
-        return { cards: heuristic };
-    }
-
-    const promptText = `You are an expert educator. Summarize the following study notes into high-quality Q/A flashcards.
-Instructions:
-1. Identify major topics or sections in the text and group cards into categories.
-2. If the text is a single topic, use one category like "General" or the topic name.
-3. Keep questions short and answers clear (under 300 characters).
-4. Return ONLY a JSON object in this format:
-{
-  "categories": [
-    {
-      "name": "Topic Name",
-      "cards": [
-        {"question": "...", "answer": "..."}
-      ]
-    }
-  ]
 }
 
-NOTES TO SUMMARIZE:
-${text}`;
-
-    try {
-        let jsonText = "";
-
-        if (AI_PROVIDER === "openai") {
-            const response = await fetch("https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${OPENAI_API_KEY}`
-                },
-                body: JSON.stringify({
-                    model: "gpt-4o-mini",
-                    messages: [{ role: "user", content: promptText }],
-                    temperature: 0.4
-                })
-            });
-
-            if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.error?.message || `OpenAI API Error: ${response.status}`);
-            }
-
-            const data = await response.json();
-            jsonText = data.choices?.[0]?.message?.content ?? "";
-        } else if (AI_PROVIDER === "groq") {
-            const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${GROQ_API_KEY}`
-                },
-                body: JSON.stringify({
-                    model: "llama-3.3-70b-versatile",
-                    messages: [{ role: "user", content: promptText }],
-                    response_format: { type: "json_object" },
-                    temperature: 0.4
-                })
-            });
-
-            if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.error?.message || `Groq API Error: ${response.status}`);
-            }
-
-            const data = await response.json();
-            jsonText = data.choices?.[0]?.message?.content ?? "";
-        } else if (AI_PROVIDER === "ollama") {
-            const response = await fetch("http://localhost:11434/api/generate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    model: OLLAMA_MODEL,
-                    prompt: promptText,
-                    format: "json",
-                    stream: false
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Ollama Error: ${response.status}. Make sure Ollama is running correctly on localhost:11434.`);
-            }
-
-            const data = await response.json();
-            jsonText = data.response ?? "";
-        } else {
-            // Gemini API call with highly resilient fallback logic
-            // Strategy: Try v1beta (JSON) -> v1 (Flash) -> v1 (Pro)
-            const configs = [
-                { ver: "v1beta", model: "gemini-1.5-flash-latest", json: true },
-                { ver: "v1beta", model: "gemini-1.5-flash", json: true },
-                { ver: "v1", model: "gemini-1.5-flash", json: false },
-                { ver: "v1", model: "gemini-pro", json: false }
-            ];
-
-            let lastError = null;
-
-            for (const config of configs) {
-                try {
-                    const fetchOptions = {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: promptText + (config.json ? "" : "\n\nIMPORTANT: Return ONLY raw JSON, no markdown blocks.") }] }],
-                            generationConfig: config.json ? { responseMimeType: "application/json" } : {},
-                            safetySettings: [
-                                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-                            ]
-                        })
-                    };
-
-                    const response = await fetch(`https://generativelanguage.googleapis.com/${config.ver}/models/${config.model}:generateContent?key=${GEMINI_API_KEY}`, fetchOptions);
-
-                    if (response.ok) {
-                        const data = await response.json();
-                        jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-                        if (jsonText) {
-                            console.log(`Success with ${config.model} (${config.ver})`);
-                            break;
-                        }
-                    } else {
-                        const errData = await response.json();
-                        console.warn(`Gemini Config [${config.ver}/${config.model}] failed:`, errData.error?.message);
-                        lastError = new Error(errData.error?.message || `Status ${response.status}`);
-                        continue;
-                    }
-                } catch (e) {
-                    console.warn(`Gemini Fetch [${config.ver}/${config.model}] failed:`, e.message);
-                    lastError = e;
-                    continue;
-                }
-            }
-
-            if (!jsonText) {
-                throw lastError || new Error("All Gemini attempts failed.");
-            }
-        }
-
-        // Strip out potential markdown code blocks if the AI included them
-        const cleanedJson = jsonText.replace(/```json|```/g, "").trim();
-        const parsed = JSON.parse(cleanedJson);
-
-        if (parsed.categories && Array.isArray(parsed.categories)) {
-            return parsed;
-        } else if (Array.isArray(parsed)) {
-            return { categories: [{ name: "Generated", cards: parsed }] };
-        }
-
-        return { cards: heuristic };
-    } catch (e) {
-        console.error("AI Generation failed:", e);
-        showToast(`AI Error: ${e.message}`, "error");
-        return { cards: heuristic };
-    }
-}
-
-function parseManualFlashcards(text) {
-    const lines = String(text).split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-    const cards = [];
-    let pendingQ = null;
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const qMatch = line.match(/^((Q|Question)\s*:)\s*(.+)$/i);
-        if (qMatch) {
-            pendingQ = qMatch[3].trim();
-            for (let j = i + 1; j < lines.length; j++) {
-                const aMatch = lines[j].match(/^((A|Answer)\s*:)\s*(.+)$/i);
-                if (aMatch) {
-                    cards.push({ question: pendingQ, answer: aMatch[3].trim() });
-                    pendingQ = null;
-                    i = j;
-                    break;
-                }
-            }
-            continue;
-        }
-        const pairMatch = line.match(/^(.+?)\s*[-–—:=]\s+(.+)$/);
-        if (pairMatch) {
-            cards.push({ question: pairMatch[1].trim(), answer: pairMatch[2].trim() });
-            continue;
-        }
-        if (line.includes("\t")) {
-            const idx = line.indexOf("\t");
-            if (idx > 0) {
-                const q = line.slice(0, idx).trim();
-                const a = line.slice(idx + 1).trim();
-                if (q && a) cards.push({ question: q, answer: a });
-                continue;
-            }
-        }
-    }
-    if (cards.length === 0 && lines.length > 0) {
-        for (const l of lines) {
-            const m = l.match(/^(.+?)\?\s*(.+)$/);
-            if (m) {
-                cards.push({ question: m[1].trim() + '?', answer: m[2].trim() });
-            }
-        }
-    }
-    return cards;
-}
-
-function parseSmartFlashcards(text) {
-    const raw = String(text || "");
-    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-    const cards = [];
-    const used = new Set();
-    const push = (q, options) => {
-        let qq = String(q || "").trim();
-        let aa = "";
-
-        if (typeof options === 'string') aa = options;
-        else if (options && options.text) aa = options.text;
-
-        aa = aa.trim();
-        if (!qq || !aa) return;
-
-        // Strip prefixes like "Q:" or "A:" if they leaked in
-        qq = qq.replace(/^(Q|Question|Term)\s*:\s*/i, "").trim();
-        aa = aa.replace(/^(A|Answer|Definition)\s*:\s*/i, "").trim();
-
-        const key = qq.toLowerCase();
-        if (used.has(key)) return;
-        used.add(key);
-        const ans = aa.length > 1000 ? aa.slice(0, 1000) : aa;
-        cards.push({ question: qq, answer: ans });
-    };
-
-    const isHeading = (l) => /^#{1,6}\s+.+$/.test(l);
-
-    for (let i = 0; i < lines.length; i++) {
-        const l = lines[i];
-
-        // Handle Q: ... A: ... on the same line
-        const sameLineMatch = l.match(/^Q:\s*(.+?)\s*A:\s*(.+)$/i);
-        if (sameLineMatch) {
-            push(sameLineMatch[1], sameLineMatch[2]);
-            continue;
-        }
-
-        // Handle Q: ... (next line) A: ...
-        const qm = l.match(/^(Q|Question)\s*:\s*(.+)$/i);
-        if (qm) {
-            let ans = "";
-            let stop = i;
-            for (let j = i + 1; j < lines.length; j++) {
-                const am = lines[j].match(/^(A|Answer)\s*:\s*(.+)$/i);
-                if (am) {
-                    ans = am[2].trim();
-                    stop = j;
-                    break;
-                }
-            }
-            if (ans) {
-                push(qm[2], ans);
-                i = stop;
-                continue;
-            }
-        }
-
-        // Handle Term - Definition
-        const pm = l.match(/^(.{2,100})\s*(?:—|–|-|:|=)\s+(.{2,500})$/);
-        if (pm && !l.toLowerCase().startsWith('http')) {
-            push(pm[1], pm[2]);
-            continue;
-        }
-    }
-
-    return cards;
-}
-// ---------------------------
-// Render Flashcards
-// ---------------------------
 function renderFlashcards() {
     const container = document.getElementById("flashcardContainer");
+    if (!container) return;
     container.innerHTML = "";
 
-    const list = flashcards.filter(fc => {
-        if (!filterText) return true;
+    const list = AppState.flashcards.filter(fc => {
+        if (!AppState.ui.filterText) return true;
         const q = String(fc.question || "").toLowerCase();
         const a = String(fc.answer || "").toLowerCase();
-        return q.includes(filterText) || a.includes(filterText);
+        return q.includes(AppState.ui.filterText) || a.includes(AppState.ui.filterText);
     });
 
     if (list.length === 0) {
         const empty = document.createElement("div");
         empty.className = "empty-state";
-        empty.textContent = flashcards.length === 0 ? "No flashcards yet. Generate or import a deck." : "No matches. Try a different search.";
+        empty.textContent = AppState.flashcards.length === 0 ? "No flashcards yet. Generate or import a deck." : "No matches. Try a different search.";
         container.appendChild(empty);
-        updateDeckInfo();
         return;
     }
 
@@ -511,746 +233,413 @@ function renderFlashcards() {
         card.addEventListener("click", () => card.classList.toggle("flipped"));
         container.appendChild(card);
     });
-    updateDeckInfo();
-    updateStats();
 }
 
-// helper to escape HTML inserted into DOM
-function escapeHtml(str = "") {
-    return String(str)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;");
+function updateDeckInfo() {
+    const el = document.getElementById("deckInfo");
+    if (!el) return;
+    const cat = AppState.categories.find(c => c.id === AppState.selectedCategoryId);
+    const catName = cat ? cat.name : "Unknown";
+    const dueCount = AppState.flashcards.filter(c => (c.due || 0) <= Date.now()).length;
+    el.textContent = `${AppState.flashcards.length} cards (${dueCount} due) in ${catName}`;
 }
 
-// ---------------------------
-// Study Mode
-// ---------------------------
+// ================================
+//  AI GENERATION CORE
+// ================================
+
+async function generateFlashcardsFromText(text) {
+    const forceAI = document.getElementById("forceAI")?.checked || false;
+    const heuristic = parseSmartFlashcards(text);
+    const provider = AppState.preferences.provider;
+    const key = provider === "openai" ? AppState.preferences.openaiKey :
+        provider === "gemini" ? AppState.preferences.geminiKey :
+            provider === "groq" ? AppState.preferences.groqKey : "local";
+
+    if (provider !== "ollama" && (!key || key.trim() === "")) {
+        if (forceAI) throw new Error(`${provider.toUpperCase()} API Key missing! Check Settings.`);
+        return { cards: heuristic };
+    }
+
+    if (!forceAI && text.length < 300 && heuristic.length >= 2) return { cards: heuristic };
+
+    const promptText = `You are an expert educator. Summarize the Q/A into JSON. Format: {"categories":[{"name":"Topic","cards":[{"question":"...","answer":"..."}]}]} NOTES: ${text}`;
+
+    try {
+        let jsonText = "";
+        if (provider === "openai") {
+            const res = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+                body: JSON.stringify({ model: "gpt-4o-mini", messages: [{ role: "user", content: promptText }] })
+            });
+            const data = await res.json();
+            jsonText = data.choices[0].message.content;
+        } else if (provider === "groq") {
+            const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+                body: JSON.stringify({ model: "llama-3.3-70b-versatile", messages: [{ role: "user", content: promptText }], response_format: { type: "json_object" } })
+            });
+            const data = await res.json();
+            jsonText = data.choices[0].message.content;
+        } else if (provider === "ollama") {
+            const res = await fetch("http://localhost:11434/api/generate", {
+                method: "POST",
+                body: JSON.stringify({ model: AppState.preferences.ollamaModel, prompt: promptText, format: "json", stream: false })
+            });
+            const data = await res.json();
+            jsonText = data.response;
+        } else {
+            const configs = [
+                { ver: "v1beta", model: "gemini-1.5-flash-latest", json: true },
+                { ver: "v1", model: "gemini-1.5-flash", json: false }
+            ];
+            for (const config of configs) {
+                try {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/${config.ver}/models/${config.model}:generateContent?key=${key}`, {
+                        method: "POST",
+                        body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }], generationConfig: config.json ? { responseMimeType: "application/json" } : {} })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        jsonText = data.candidates[0].content.parts[0].text;
+                        break;
+                    }
+                } catch (e) { continue; }
+            }
+        }
+        if (!jsonText) throw new Error("AI failed to return content.");
+        const cleaned = jsonText.replace(/```json|```/g, "").trim();
+        return JSON.parse(cleaned);
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+// ================================
+//  STUDY ENGINE
+// ================================
+
 function startStudyMode() {
-    if (flashcards.length === 0) {
-        showToast("No flashcards found!", "info");
-        navigateTo('create');
+    const dueCards = AppState.flashcards.filter(c => (c.due || 0) <= Date.now());
+    if (AppState.flashcards.length === 0) {
+        showToast("No cards in this category!", "info");
+        navigateTo('library');
         return;
     }
-    const next = getNextDueCard();
-    if (!next) {
+    if (dueCards.length === 0) {
         showToast("All caught up! No cards due.", "success");
         navigateTo('dashboard');
         return;
     }
 
-    // Initialize session stats
-    const totalDue = flashcards.filter(c => (!selectedCategoryId || c.categoryId === selectedCategoryId) && (!c.due || c.due <= Date.now())).length;
-    studySessionStats = { total: totalDue, current: 0 };
+    AppState.stats.sessionTotal = dueCards.length;
+    AppState.stats.sessionCurrent = 0;
     updateStudyProgress();
 
-    currentCardId = next.id;
+    const next = getNextDueCard();
+    AppState.ui.currentCardId = next.id;
     showStudyCard();
-    setupStudyGestures();
 }
 
 function updateStudyProgress() {
     const bar = document.getElementById("studyProgressBar");
     const text = document.getElementById("studyProgressText");
     if (!bar || !text) return;
-
-    studySessionStats.current = Math.min(studySessionStats.current, studySessionStats.total);
-    const percent = studySessionStats.total > 0 ? (studySessionStats.current / studySessionStats.total) * 100 : 0;
+    const total = AppState.stats.sessionTotal || 0;
+    const current = AppState.stats.sessionCurrent || 0;
+    const percent = total > 0 ? (current / total) * 100 : 0;
     bar.style.width = `${percent}%`;
-    text.innerText = `${studySessionStats.current}/${studySessionStats.total}`;
+    text.innerText = `${current}/${total}`;
 }
 
 function showStudyCard() {
-    const card = flashcards.find(c => c.id === currentCardId) || getNextDueCard();
-    if (!card) {
-        alert("Study session complete!");
-        navigateTo('dashboard');
-        return;
-    }
-    document.getElementById("studyCard").innerHTML = `
-        <div><strong>Q:</strong> ${escapeHtml(card.question)}<br><br>
-        <em>(Click to reveal answer)</em></div>
-    `;
-
-    document.getElementById("studyCard").onclick = () => {
-        const text = card.answer;
-        document.getElementById("studyCard").innerHTML = `
-            <div><strong>A:</strong> ${escapeHtml(text)}</div>
-        `;
-        if (document.getElementById("ttsAutoPlay").checked) {
-            speakText(text);
-        }
+    const card = AppState.flashcards.find(c => c.id === AppState.ui.currentCardId);
+    if (!card) return navigateTo('dashboard');
+    const studyCard = document.getElementById("studyCard");
+    studyCard.innerHTML = `<div><strong>Q:</strong> ${escapeHtml(card.question)}<br><br><em>(Click to flip)</em></div>`;
+    studyCard.classList.remove("flipped");
+    studyCard.onclick = () => {
+        studyCard.innerHTML = `<div><strong>A:</strong> ${escapeHtml(card.answer)}</div>`;
+        if (AppState.preferences.ttsAutoPlay) speakText(card.answer);
     };
 }
 
-function speakText(text) {
-    if (!text) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    window.speechSynthesis.speak(utterance);
-}
-
-function updateStreakAndProgress() {
-    const today = new Date().toDateString();
-
-    if (lastStudyDate !== today) {
-        if (lastStudyDate) {
-            const last = new Date(lastStudyDate);
-            const yest = new Date();
-            yest.setDate(yest.getDate() - 1);
-            if (last.toDateString() !== yest.toDateString()) {
-                currentStreak = 0;
-            }
-        }
-        lastStudyDate = today;
-        dailySessionCount = 0;
-    }
-
-    dailySessionCount++;
-    if (dailySessionCount === 5) {
-        currentStreak++;
-    }
-
-    saveStreakData();
-    updateStats();
-}
-
-function saveStreakData() {
-    localStorage.setItem(STREAK_KEY, currentStreak);
-    localStorage.setItem(LAST_DATE_KEY, lastStudyDate);
-    localStorage.setItem(SESSION_COUNT_KEY, dailySessionCount);
-}
-
-function loadStreakData() {
-    currentStreak = parseInt(localStorage.getItem(STREAK_KEY)) || 0;
-    lastStudyDate = localStorage.getItem(LAST_DATE_KEY);
-    const savedCount = parseInt(localStorage.getItem(SESSION_COUNT_KEY)) || 0;
-    const today = new Date().toDateString();
-    dailySessionCount = (lastStudyDate === today) ? savedCount : 0;
-}
-
-document.addEventListener("click", (e) => {
-    if (!e.target || !e.target.classList) return;
-    if (e.target.classList.contains("diff-btn")) {
-        const diff = e.target.getAttribute("data-diff");
-        rateCurrentCard(diff);
-    }
-    if (e.target.classList.contains("edit-card")) {
-        e.stopPropagation();
-        const id = e.target.getAttribute("data-id");
-        editCard(id);
-    }
-    if (e.target.classList.contains("delete-card")) {
-        e.stopPropagation();
-        const id = e.target.getAttribute("data-id");
-        deleteCard(id);
-    }
-});
-
-// ---------------------------
-// Save / Load / Export / Import
-// ---------------------------
-document.addEventListener("DOMContentLoaded", () => {
-    // these elements may be wired again after DOM ready in initApp
-});
-
-function initApp() {
-    // wire buttons (ensure DOM ready)
-    document.getElementById("generateBtn").addEventListener("click", async () => {
-        const text = document.getElementById("notesInput").value;
-        if (!text.trim()) return alert("Enter some notes!");
-
-        if (generating) return;
-        generating = true;
-        const btn = document.getElementById("generateBtn");
-        const spinner = document.getElementById("genSpinner");
-        btn.disabled = true;
-        spinner.classList.remove("hidden");
-
-        try {
-            const result = await generateFlashcardsFromText(text);
-
-            if (result.categories && Array.isArray(result.categories)) {
-                // Multi-category logic
-                for (const catData of result.categories) {
-                    let cat = categories.find(c => c.name.toLowerCase() === catData.name.toLowerCase());
-                    if (!cat) {
-                        const newId = genId();
-                        cat = { id: newId, name: catData.name };
-                        categories.push(cat);
-                    }
-
-                    const newCards = normalizeFlashcards(catData.cards);
-                    const existingData = localStorage.getItem(getCategoryStorageKey(cat.id));
-                    let currentCards = existingData ? normalizeFlashcards(JSON.parse(existingData)) : [];
-
-                    // Merge and save
-                    currentCards = [...currentCards, ...newCards];
-                    localStorage.setItem(getCategoryStorageKey(cat.id), JSON.stringify(currentCards));
-                }
-
-                // Select the first new category and load it
-                selectedCategoryId = categories.find(c => c.name.toLowerCase() === result.categories[0].name.toLowerCase()).id;
-                localStorage.setItem(SELECTED_CATEGORY_KEY, selectedCategoryId);
-                saveCategories();
-                renderCategoryOptions();
-                loadDeckForCategory(selectedCategoryId);
-                showToast(`Generated ${result.categories.length} categories!`, "success");
-            } else if (result.cards) {
-                // Heuristic or single-list fallback
-                flashcards = [...flashcards, ...normalizeFlashcards(result.cards)];
-                saveCurrentDeck();
-                renderFlashcards();
-                showToast(`Generated ${result.cards.length} cards!`, "success");
-            }
-
-            document.getElementById("notesInput").value = "";
-            navigateTo('library');
-        } catch (err) {
-            console.error(err);
-            showToast("Failed to process cards.", "error");
-        } finally {
-            generating = false;
-            btn.disabled = false;
-            spinner.classList.add("hidden");
-        }
-    });
-
-    // document.getElementById("studyModeBtn").addEventListener("click", startStudyMode);
-
-    document.getElementById("saveDeckBtn").addEventListener("click", () => {
-        saveCurrentDeck();
-        alert("Deck saved!");
-    });
-
-    document.getElementById("loadDeckBtn").addEventListener("click", () => {
-        if (!selectedCategoryId) return;
-        const data = localStorage.getItem(getCategoryStorageKey(selectedCategoryId));
-        if (!data) return alert("No deck saved for this category!");
-        try {
-            flashcards = normalizeFlashcards(JSON.parse(data));
-            renderFlashcards();
-            alert("Deck loaded!");
-        } catch (e) {
-            alert("Failed to load deck (invalid JSON).");
-        }
-    }); document.getElementById("saveDeckBtnLib")?.addEventListener("click", () => {
-        saveCurrentDeck();
-        showToast("Deck saved successfully!", "success");
-    });
-
-    document.getElementById("exportDeckBtn").addEventListener("click", () => {
-        const blob = new Blob([JSON.stringify(flashcards, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `flashcards-${getCategoryName(selectedCategoryId)}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-    });
-
-    document.getElementById("importJSON").addEventListener("change", async (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        try {
-            const text = await file.text();
-            flashcards = normalizeFlashcards(JSON.parse(text));
-            saveCurrentDeck();
-            renderFlashcards();
-            alert("Deck imported!");
-        } catch (e) {
-            alert("Invalid JSON file.");
-        }
-    });
-
-    // AI Configuration Management
-    const providerSelect = document.getElementById("aiProviderSelect");
-    const openaiKeyInput = document.getElementById("apiKeyInput");
-    const saveOpenaiKeyBtn = document.getElementById("saveKeyBtn");
-    const geminiKeyInput = document.getElementById("geminiKeyInput");
-    const saveGeminiKeyBtn = document.getElementById("saveGeminiKeyBtn");
-    const groqKeyInput = document.getElementById("groqKeyInput");
-    const saveGroqKeyBtn = document.getElementById("saveGroqKeyBtn");
-    const ollamaModelInput = document.getElementById("ollamaModelInput");
-    const saveOllamaBtn = document.getElementById("saveOllamaBtn");
-    const aiWarning = document.getElementById("aiMissingWarning");
-
-    const updateUIPisibility = () => {
-        const p = providerSelect?.value || "gemini";
-        const groups = {
-            openai: document.getElementById("openaiKeyGroup"),
-            gemini: document.getElementById("geminiKeyGroup"),
-            groq: document.getElementById("groqKeyGroup"),
-            ollama: document.getElementById("ollamaGroup")
-        };
-
-        Object.keys(groups).forEach(key => {
-            if (key === p) groups[key]?.classList.remove("hidden");
-            else groups[key]?.classList.add("hidden");
-        });
-    };
-
-    if (providerSelect) {
-        providerSelect.value = AI_PROVIDER;
-        providerSelect.addEventListener("change", (e) => {
-            AI_PROVIDER = e.target.value;
-            localStorage.setItem(PROVIDER_STORAGE, AI_PROVIDER);
-            updateUIPisibility();
-            updateAIWarning();
-        });
-    }
-
-    if (openaiKeyInput) openaiKeyInput.value = OPENAI_API_KEY;
-    if (geminiKeyInput) geminiKeyInput.value = GEMINI_API_KEY;
-    if (groqKeyInput) groqKeyInput.value = GROQ_API_KEY;
-    if (ollamaModelInput) ollamaModelInput.value = OLLAMA_MODEL;
-
-    const updateAIWarning = () => {
-        let currentKey = "";
-        if (AI_PROVIDER === "openai") currentKey = OPENAI_API_KEY;
-        else if (AI_PROVIDER === "gemini") currentKey = GEMINI_API_KEY;
-        else if (AI_PROVIDER === "groq") currentKey = GROQ_API_KEY;
-        else if (AI_PROVIDER === "ollama") currentKey = "ollama";
-
-        if (!currentKey) {
-            aiWarning?.classList.remove("hidden");
-        } else {
-            aiWarning?.classList.add("hidden");
-        }
-    };
-
-    updateUIPisibility();
-    updateAIWarning();
-
-    saveOpenaiKeyBtn?.addEventListener("click", () => {
-        OPENAI_API_KEY = (openaiKeyInput?.value || "").trim();
-        if (!OPENAI_API_KEY) localStorage.removeItem(OPENAI_KEY_STORAGE);
-        else localStorage.setItem(OPENAI_KEY_STORAGE, OPENAI_API_KEY);
-        showToast("OpenAI Key saved!", "success");
-        updateAIWarning();
-    });
-
-    saveGeminiKeyBtn?.addEventListener("click", () => {
-        GEMINI_API_KEY = (geminiKeyInput?.value || "").trim();
-        if (!GEMINI_API_KEY) localStorage.removeItem(GEMINI_KEY_STORAGE);
-        else localStorage.setItem(GEMINI_KEY_STORAGE, GEMINI_API_KEY);
-        showToast("Gemini Key saved!", "success");
-        updateAIWarning();
-    });
-
-    saveGroqKeyBtn?.addEventListener("click", () => {
-        GROQ_API_KEY = (groqKeyInput?.value || "").trim();
-        if (!GROQ_API_KEY) localStorage.removeItem(GROQ_KEY_STORAGE);
-        else localStorage.setItem(GROQ_KEY_STORAGE, GROQ_API_KEY);
-        showToast("Groq Key saved!", "success");
-        updateAIWarning();
-    });
-
-    saveOllamaBtn?.addEventListener("click", () => {
-        OLLAMA_MODEL = (ollamaModelInput?.value || "").trim() || "llama3";
-        localStorage.setItem(OLLAMA_MODEL_STORAGE, OLLAMA_MODEL);
-        showToast("Ollama Model saved!", "success");
-    });
-
-    document.getElementById("clearDeckBtn").addEventListener("click", () => {
-        if (flashcards.length === 0) return;
-        flashcards = [];
-        saveCurrentDeck();
-        renderFlashcards();
-    });
-
-    document.getElementById("shuffleDeckBtn").addEventListener("click", () => {
-        if (flashcards.length < 2) return;
-        for (let i = flashcards.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [flashcards[i], flashcards[j]] = [flashcards[j], flashcards[i]];
-        }
-        saveCurrentDeck();
-        renderFlashcards();
-    });
-
-    search.addEventListener("input", (e) => {
-        filterText = e.target.value.toLowerCase();
-        renderFlashcards();
-    });
-
-    // Mobile toolbar has been replaced by bottom-nav, but we might want to keep the logic if needed
-    // However, the IDs have changed or elements were removed.
-    // Let's ensure the new study button on dashboard works
-    const startStudyBtn = document.getElementById("startStudyBtn");
-    if (startStudyBtn) startStudyBtn.onclick = () => navigateTo('study');
-
-    document.getElementById("speakBtn").addEventListener("click", () => {
-        const card = flashcards.find(c => c.id === currentCardId);
-        if (card) {
-            const isFlipped = document.getElementById("studyCard").innerText.includes("A:");
-            speakText(isFlipped ? card.answer : card.question);
-        }
-    });
-
-    loadStreakData();
-    setupStudyGestures();
-    initCategories();
-}
-
-function updateDeckInfo() {
-    const el = document.getElementById("deckInfo");
-    const sel = document.getElementById("categorySelect");
-
-    // RIGID SYNC: The dropdown is the source of truth for the DISPLAYED category name.
-    if (sel && sel.value && sel.value !== selectedCategoryId) {
-        console.log(`Syncing category state: current=${selectedCategoryId} -> UI=${sel.value}`);
-        selectedCategoryId = sel.value;
-    }
-
-    if (el) {
-        const due = getDueCount();
-        const name = getCategoryName(selectedCategoryId);
-        console.log(`Updating Deck Info: ID=${selectedCategoryId}, Name=${name}, Cards=${flashcards.length}`);
-        el.textContent = `${flashcards.length} ${flashcards.length === 1 ? 'card' : 'cards'} (${due} due) in ${name}`;
-    }
-}
-
-function normalizeFlashcards(cards = []) {
-    return cards.map((c) => {
-        const id = c.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        const stats = c.stats || { ease: 2.5, interval: 0, reps: 0 };
-        const due = c.due || Date.now();
-        return { id, question: c.question || "", answer: c.answer || "", stats, due };
-    });
-}
-
-function getNextDueCard() {
-    const now = Date.now();
-    const dueCards = flashcards.filter(c => (c.due || 0) <= now);
-    if (dueCards.length === 0) return null;
-    dueCards.sort((a, b) => (a.due || 0) - (b.due || 0));
-    return dueCards[0];
-}
-
-function getDueCount() {
-    const now = Date.now();
-    return flashcards.filter(c => (c.due || 0) <= now).length;
-}
-
-function rateCurrentCard(diff = "medium") {
-    const card = flashcards.find(c => c.id === currentCardId);
+function rateCard(diff) {
+    const card = AppState.flashcards.find(c => c.id === AppState.ui.currentCardId);
     if (!card) return;
     const now = Date.now();
     const s = card.stats || { ease: 2.5, interval: 0, reps: 0 };
     if (diff === "easy") {
-        s.ease = Math.min(3.0, (s.ease || 2.5) + 0.15);
+        s.ease = Math.min(3.0, s.ease + 0.15);
         s.interval = s.interval > 0 ? Math.round(s.interval * s.ease) : 1;
-        s.reps = (s.reps || 0) + 1;
     } else if (diff === "hard") {
-        s.ease = Math.max(1.3, (s.ease || 2.5) - 0.2);
+        s.ease = Math.max(1.3, s.ease - 0.2);
         s.interval = 1;
-        s.reps = 0;
     } else {
-        s.ease = s.ease || 2.5;
-        s.interval = s.interval > 0 ? Math.max(1, Math.round(s.interval)) : 1;
-        s.reps = (s.reps || 0) + 1;
+        s.interval = Math.max(1, Math.round(s.interval || 1));
     }
+    s.reps++;
     card.stats = s;
     card.due = now + s.interval * 24 * 60 * 60 * 1000;
-    saveCurrentDeck();
-    updateStreakAndProgress();
-    if (diff === "easy") ratingCounts.easy = (ratingCounts.easy || 0) + 1;
-    else if (diff === "hard") ratingCounts.hard = (ratingCounts.hard || 0) + 1;
-    else ratingCounts.medium = (ratingCounts.medium || 0) + 1;
-    saveRatingCounts();
-    updateStats();
-
-    studySessionStats.current++;
+    AppState.stats.ratingCounts[diff]++;
+    AppState.stats.sessionCurrent++;
     updateStudyProgress();
-
+    updateStreak();
+    saveAll();
     const next = getNextDueCard();
     if (!next) {
         showToast("Study session complete!", "success");
         navigateTo('dashboard');
-        return;
+    } else {
+        AppState.ui.currentCardId = next.id;
+        showStudyCard();
     }
-    currentCardId = next.id;
-    showStudyCard();
 }
 
-function editCard(id) {
-    const idx = flashcards.findIndex(c => c.id === id);
-    if (idx < 0) return;
-    const q = prompt("Edit question", flashcards[idx].question || "");
-    if (q == null) return;
-    const a = prompt("Edit answer", flashcards[idx].answer || "");
-    if (a == null) return;
-    flashcards[idx].question = q;
-    flashcards[idx].answer = a;
-    renderFlashcards();
+function updateStreak() {
+    const today = new Date().toDateString();
+    if (AppState.stats.lastStudyDate !== today) {
+        AppState.stats.dailySessionCount = 0;
+        AppState.stats.lastStudyDate = today;
+    }
+    AppState.stats.dailySessionCount++;
+    if (AppState.stats.dailySessionCount === 5) AppState.stats.streak++;
 }
 
-function deleteCard(id) {
-    const idx = flashcards.findIndex(c => c.id === id);
-    if (idx < 0) return;
-    flashcards.splice(idx, 1);
-    renderFlashcards();
+// ================================
+//  DASHBOARD & MISC
+// ================================
+
+function updateDashboardStats() {
+    document.getElementById("statStreak").textContent = AppState.stats.streak;
+    document.getElementById("progressCount").textContent = Math.min(5, AppState.stats.dailySessionCount);
+    document.getElementById("progressBar").style.width = (Math.min(5, AppState.stats.dailySessionCount) / 5 * 100) + "%";
+    const total = AppState.flashcards.length;
+    const due = AppState.flashcards.filter(c => (c.due || 0) <= Date.now()).length;
+    document.getElementById("statTotal").textContent = total;
+    document.getElementById("statDue").textContent = due;
 }
 
-function quickAddCard() {
-    const q = prompt("New question");
-    if (!q) return;
-    const a = prompt("New answer");
-    if (!a) return;
-    const card = normalizeFlashcards([{ question: q, answer: a }])[0];
-    flashcards.push(card);
-    saveCurrentDeck();
-    renderFlashcards();
-}
+// ================================
+//  HANDLERS & INIT
+// ================================
 
-function setupStudyGestures() {
-    if (studyGesturesSetup) return;
-    const el = document.getElementById("studyCard");
-    if (!el) return;
-    let sx = 0, sy = 0, ex = 0, ey = 0;
-    el.addEventListener("touchstart", (e) => {
-        const t = e.touches[0];
-        sx = t.clientX; sy = t.clientY; ex = sx; ey = sy;
-    }, { passive: true });
-    el.addEventListener("touchmove", (e) => {
-        const t = e.touches[0];
-        ex = t.clientX; ey = t.clientY;
-    }, { passive: true });
-    el.addEventListener("touchend", () => {
-        const dx = ex - sx, dy = ey - sy;
-        const ax = Math.abs(dx), ay = Math.abs(dy);
-        if (ax > 50 && ax > ay) {
-            rateCurrentCard(dx > 0 ? "easy" : "hard");
-        } else if (ay > 50) {
-            rateCurrentCard("medium");
+function initApp() {
+    loadAll();
+    applyTheme(AppState.preferences.theme);
+
+    // AI Provider Setup
+    const pSel = document.getElementById("aiProviderSelect");
+    if (pSel) {
+        pSel.value = AppState.preferences.provider;
+        pSel.onchange = (e) => {
+            AppState.preferences.provider = e.target.value;
+            syncSettingsUI();
+            saveAll();
+        };
+    }
+
+    // Key Inputs
+    ["openaiKey", "geminiKey", "groqKey"].forEach(key => {
+        const input = document.getElementById(key === "openaiKey" ? "apiKeyInput" : key + "Input");
+        if (input) {
+            input.value = AppState.preferences[key];
+            const btnKey = "save" + key.charAt(0).toUpperCase() + key.slice(1) + "Btn";
+            document.getElementById(btnKey)?.addEventListener("click", () => {
+                AppState.preferences[key] = input.value.trim();
+                saveAll();
+                showToast("Key saved!", "success");
+            });
         }
     });
-    studyGesturesSetup = true;
-}
 
-function initCategories() {
-    loadCategories();
-    if (!categories || categories.length === 0) {
-        const id = genId();
-        categories = [{ id, name: "General" }];
-        selectedCategoryId = id;
-        saveCategories();
-        localStorage.setItem(SELECTED_CATEGORY_KEY, selectedCategoryId);
-    }
-    const savedSel = localStorage.getItem(SELECTED_CATEGORY_KEY);
-    if (savedSel && categories.find(c => c.id === savedSel)) {
-        selectedCategoryId = savedSel;
-    } else {
-        selectedCategoryId = categories[0].id;
-        localStorage.setItem(SELECTED_CATEGORY_KEY, selectedCategoryId);
-    }
-    renderCategoryOptions();
-    loadRatingCounts();
-    loadDeckForCategory(selectedCategoryId);
-    const sel = document.getElementById("categorySelect");
-    const addBtn = document.getElementById("addCategoryBtn");
-    const renBtn = document.getElementById("renameCategoryBtn");
-    const delBtn = document.getElementById("deleteCategoryBtn");
-    sel.addEventListener("change", (e) => {
-        const newId = e.target.value;
-        console.log(`User selected category: ${newId} (${getCategoryName(newId)})`);
-        selectedCategoryId = newId;
-        localStorage.setItem(SELECTED_CATEGORY_KEY, selectedCategoryId);
-        loadRatingCounts();
-        loadDeckForCategory(selectedCategoryId);
-        // Force immediate UI update
-        updateDeckInfo();
+    // Category Handlers
+    document.getElementById("categorySelect")?.addEventListener("change", (e) => {
+        saveAll();
+        AppState.selectedCategoryId = e.target.value;
+        loadDeck(AppState.selectedCategoryId);
+        renderLibrary();
     });
-    addBtn.addEventListener("click", () => {
-        const name = prompt("New category name");
-        if (!name) return;
-        const id = genId();
-        categories.push({ id, name: name.trim() });
-        saveCategories();
-        selectedCategoryId = id;
-        localStorage.setItem(SELECTED_CATEGORY_KEY, selectedCategoryId);
-        renderCategoryOptions();
-        loadRatingCounts();
-        loadDeckForCategory(selectedCategoryId);
+
+    document.getElementById("addCategoryBtn")?.addEventListener("click", () => {
+        const name = prompt("New category name:");
+        if (name) {
+            const id = genId();
+            AppState.categories.push({ id, name: name.trim() });
+            AppState.selectedCategoryId = id;
+            AppState.flashcards = [];
+            saveAll();
+            renderLibrary();
+        }
     });
-    renBtn.addEventListener("click", () => {
-        const cat = categories.find(c => c.id === selectedCategoryId);
+
+    document.getElementById("renameCategoryBtn")?.addEventListener("click", () => {
+        const cat = AppState.categories.find(c => c.id === AppState.selectedCategoryId);
         if (!cat) return;
-        const name = prompt("Rename category", cat.name);
-        if (name == null) return;
-        cat.name = name.trim();
-        saveCategories();
-        renderCategoryOptions();
-        updateDeckInfo();
+        const name = prompt("Rename to:", cat.name);
+        if (name) {
+            cat.name = name.trim();
+            saveAll();
+            renderLibrary();
+        }
     });
-    delBtn.addEventListener("click", () => {
-        if (categories.length <= 1) return alert("Cannot delete the last category.");
-        const cat = categories.find(c => c.id === selectedCategoryId);
-        if (!cat) return;
-        const ok = confirm(`Delete category "${cat.name}" and its deck?`);
-        if (!ok) return;
-        localStorage.removeItem(getCategoryStorageKey(cat.id));
-        categories = categories.filter(c => c.id !== cat.id);
-        saveCategories();
-        selectedCategoryId = categories[0].id;
-        localStorage.setItem(SELECTED_CATEGORY_KEY, selectedCategoryId);
-        renderCategoryOptions();
-        loadRatingCounts();
-        loadDeckForCategory(selectedCategoryId);
+
+    document.getElementById("deleteCategoryBtn")?.addEventListener("click", () => {
+        if (AppState.categories.length <= 1) return showToast("Cannot delete last category.", "error");
+        if (confirm("Delete this category and its cards?")) {
+            AppState.categories = AppState.categories.filter(c => c.id !== AppState.selectedCategoryId);
+            AppState.selectedCategoryId = AppState.categories[0].id;
+            loadDeck(AppState.selectedCategoryId);
+            saveAll();
+            renderLibrary();
+        }
     });
-}
 
-function renderCategoryOptions() {
-    const sel = document.getElementById("categorySelect");
-    if (!sel) return;
-    sel.innerHTML = "";
-    categories.forEach(c => {
-        const opt = document.createElement("option");
-        opt.value = c.id;
-        opt.textContent = c.name;
-        if (c.id === selectedCategoryId) opt.selected = true;
-        sel.appendChild(opt);
+    // Library Actions
+    document.getElementById("saveDeckBtnLib")?.addEventListener("click", () => {
+        saveAll();
+        showToast("All changes saved!", "success");
     });
-}
 
-function loadCategories() {
-    try {
-        const raw = localStorage.getItem(CATEGORY_KEY);
-        categories = raw ? JSON.parse(raw) : [];
-    } catch { categories = []; }
-}
+    document.getElementById("saveDeckBtn")?.addEventListener("click", () => {
+        saveAll();
+        showToast("Local backup created!", "success");
+    });
 
-function saveCategories() {
-    localStorage.setItem(CATEGORY_KEY, JSON.stringify(categories));
-}
+    document.getElementById("loadDeckBtn")?.addEventListener("click", () => {
+        loadAll();
+        renderLibrary();
+        showToast("Data reloaded from storage.", "info");
+    });
 
-function getCategoryStorageKey(id) {
-    return `flashcards_${id}`;
-}
+    document.getElementById("saveAllBtnDash")?.addEventListener("click", () => {
+        saveAll();
+        showToast("Progress saved!", "success");
+    });
 
-function getCategoryName(id) {
-    const c = categories.find(x => x.id === id);
-    return c ? c.name : "General";
-}
-
-function loadDeckForCategory(id) {
-    const raw = localStorage.getItem(getCategoryStorageKey(id));
-    if (!raw) {
-        flashcards = [];
+    document.getElementById("shuffleDeckBtn")?.onclick = () => {
+        AppState.flashcards.sort(() => Math.random() - 0.5);
+        saveAll();
         renderFlashcards();
-        return;
-    }
-    try {
-        flashcards = normalizeFlashcards(JSON.parse(raw));
-    } catch { flashcards = []; }
-    renderFlashcards();
+    };
+
+    document.getElementById("clearDeckBtn")?.onclick = () => {
+        if (confirm("Clear all cards in this category?")) {
+            AppState.flashcards = [];
+            saveAll();
+            renderFlashcards();
+        }
+    };
+
+    // Generate Button
+    document.getElementById("generateBtn")?.addEventListener("click", async () => {
+        const text = document.getElementById("notesInput").value;
+        if (!text.trim()) return;
+        AppState.ui.generating = true;
+        document.getElementById("genSpinner").classList.remove("hidden");
+        try {
+            const res = await generateFlashcardsFromText(text);
+            if (res.categories) {
+                res.categories.forEach(cat => {
+                    let existing = AppState.categories.find(c => c.name.toLowerCase() === cat.name.toLowerCase());
+                    if (!existing) {
+                        existing = { id: genId(), name: cat.name };
+                        AppState.categories.push(existing);
+                    }
+                    if (existing.id === AppState.selectedCategoryId) {
+                        AppState.flashcards = [...AppState.flashcards, ...normalizeFlashcards(cat.cards)];
+                    } else {
+                        const key = `flashcards_${existing.id}`;
+                        const old = JSON.parse(localStorage.getItem(key) || "[]");
+                        localStorage.setItem(key, JSON.stringify([...old, ...normalizeFlashcards(cat.cards)]));
+                    }
+                });
+            } else if (res.cards) {
+                AppState.flashcards = [...AppState.flashcards, ...normalizeFlashcards(res.cards)];
+            }
+            saveAll();
+            navigateTo('library');
+        } catch (e) { showToast(e.message, "error"); }
+        finally {
+            AppState.ui.generating = false;
+            document.getElementById("genSpinner").classList.add("hidden");
+        }
+    });
+
+    document.querySelectorAll(".diff-btn").forEach(btn => btn.onclick = () => rateCard(btn.dataset.diff));
+    document.getElementById("searchInput")?.addEventListener("input", (e) => {
+        AppState.ui.filterText = e.target.value.toLowerCase();
+        renderFlashcards();
+    });
+
+    syncSettingsUI();
+    renderLibrary();
 }
 
-function saveCurrentDeck() {
-    if (!selectedCategoryId) return;
-    localStorage.setItem(getCategoryStorageKey(selectedCategoryId), JSON.stringify(flashcards));
-    saveCategories(); // Also save the category list and current selection
-    localStorage.setItem(SELECTED_CATEGORY_KEY, selectedCategoryId);
+function syncSettingsUI() {
+    const p = AppState.preferences.provider;
+    ["openai", "gemini", "groq", "ollama"].forEach(v => {
+        const el = document.getElementById(v + (v === "ollama" ? "Group" : "KeyGroup"));
+        if (el) el.classList.toggle("hidden", p !== v);
+    });
 }
 
-function genId() {
-    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function genId() { return Date.now() + "-" + Math.random().toString(16).slice(2); }
+function normalizeFlashcards(cards = []) {
+    return cards.map(c => ({
+        id: c.id || genId(),
+        question: c.question || "Empty?",
+        answer: c.answer || "Empty.",
+        due: c.due || Date.now(),
+        stats: c.stats || { ease: 2.5, interval: 0, reps: 0 }
+    }));
 }
-
-function getRatingsStorageKey(id) {
-    return `flashcards_ratings_${id}`;
-}
-
-function loadRatingCounts() {
-    try {
-        const raw = localStorage.getItem(getRatingsStorageKey(selectedCategoryId));
-        ratingCounts = raw ? JSON.parse(raw) : { easy: 0, medium: 0, hard: 0 };
-    } catch {
-        ratingCounts = { easy: 0, medium: 0, hard: 0 };
-    }
-    updateStats();
-}
-
-function saveRatingCounts() {
-    if (!selectedCategoryId) return;
-    localStorage.setItem(getRatingsStorageKey(selectedCategoryId), JSON.stringify(ratingCounts));
-}
-
-function updateStats() {
-    const total = flashcards.length;
+function escapeHtml(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function getNextDueCard() {
     const now = Date.now();
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    const startToday = d.getTime();
-    const d2 = new Date();
-    d2.setHours(23, 59, 59, 999);
-    const endToday = d2.getTime();
-    const weekEnd = endToday + 7 * 24 * 60 * 60 * 1000;
-    let newCount = 0, dueCount = 0, overdueCount = 0;
-    let sumEase = 0, sumInterval = 0;
-    let nextDue = null;
-    let distOver = 0, distToday = 0, distWeek = 0, distLater = 0;
-    for (const c of flashcards) {
-        const reps = (c.stats && c.stats.reps) || 0;
-        const ease = (c.stats && c.stats.ease) || 2.5;
-        const interval = (c.stats && c.stats.interval) || 0;
-        const due = c.due || 0;
-        if (reps === 0) newCount++;
-        if (due <= now) dueCount++;
-        if (due < startToday) overdueCount++;
-        sumEase += ease;
-        sumInterval += interval;
-        if (nextDue == null || due < nextDue) nextDue = due;
-        if (due < startToday) distOver++;
-        else if (due <= endToday) distToday++;
-        else if (due <= weekEnd) distWeek++;
-        else distLater++;
-    }
-    const avgEase = total > 0 ? (sumEase / total) : 0;
-    const avgInterval = total > 0 ? (sumInterval / total) : 0;
-    const elTotal = document.getElementById("statTotal");
-    const elNew = document.getElementById("statNew");
-    const elDue = document.getElementById("statDue");
-    const elOver = document.getElementById("statOverdue");
-    const elAvgE = document.getElementById("statAvgEase");
-    const elAvgI = document.getElementById("statAvgInterval");
-    const elNext = document.getElementById("statNextDue");
-    if (elTotal) elTotal.textContent = String(total);
-    if (elNew) elNew.textContent = String(newCount);
-    if (elDue) elDue.textContent = String(dueCount);
-    if (elOver) elOver.textContent = String(overdueCount);
-    if (elAvgE) elAvgE.textContent = total > 0 ? avgEase.toFixed(2) : "0";
-    if (elAvgI) elAvgI.textContent = total > 0 ? Math.round(avgInterval) : "0";
-    if (elNext) elNext.textContent = nextDue ? new Date(nextDue).toLocaleDateString() : "—";
-    const elRE = document.getElementById("statRatingsEasy");
-    const elRM = document.getElementById("statRatingsMedium");
-    const elRH = document.getElementById("statRatingsHard");
-    if (elRE) elRE.textContent = String((ratingCounts && ratingCounts.easy) || 0);
-    if (elRM) elRM.textContent = String((ratingCounts && ratingCounts.medium) || 0);
-    if (elRH) elRH.textContent = String((ratingCounts && ratingCounts.hard) || 0);
-    const totalForBars = total > 0 ? total : 1;
-    const bOver = document.getElementById("distOverdue");
-    const bToday = document.getElementById("distToday");
-    const bWeek = document.getElementById("distWeek");
-    const bLater = document.getElementById("distLater");
-    if (bOver) bOver.style.width = ((distOver / totalForBars) * 100).toFixed(2) + "%";
-    if (bToday) bToday.style.width = ((distToday / totalForBars) * 100).toFixed(2) + "%";
-    if (bWeek) bWeek.style.width = ((distWeek / totalForBars) * 100).toFixed(2) + "%";
-    if (bLater) bLater.style.width = ((distLater / totalForBars) * 100).toFixed(2) + "%";
-
-    // Streak & Progress UI
-    const elStreak = document.getElementById("statStreak");
-    if (elStreak) elStreak.textContent = String(currentStreak);
-
-    const elProgCount = document.getElementById("progressCount");
-    if (elProgCount) elProgCount.textContent = String(Math.min(5, dailySessionCount));
-
-    const elProgBar = document.getElementById("progressBar");
-    if (elProgBar) {
-        const pct = (Math.min(5, dailySessionCount) / 5) * 100;
-        elProgBar.style.width = pct + "%";
+    const due = AppState.flashcards.filter(c => (c.due || 0) <= now).sort((a, b) => a.due - b.due);
+    return due[0] || null;
+}
+function speakText(t) { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(t)); }
+function quickAddCard() {
+    const q = prompt("Q:");
+    const a = prompt("A:");
+    if (q && a) {
+        AppState.flashcards.push(normalizeFlashcards([{ question: q, answer: a }])[0]);
+        saveAll();
+        renderLibrary();
     }
 }
+function parseSmartFlashcards(text) {
+    const lines = text.split('\n').filter(l => l.trim());
+    const cards = [];
+    lines.forEach(l => {
+        const m = l.match(/(.+?)\s*[:=-]\s*(.+)/);
+        if (m) cards.push({ question: m[1].trim(), answer: m[2].trim() });
+    });
+    return cards;
+}
+
+// Event Delegates
+document.addEventListener("click", (e) => {
+    if (e.target.classList.contains("edit-card")) {
+        const fc = AppState.flashcards.find(c => c.id === e.target.dataset.id);
+        if (fc) {
+            const q = prompt("Q:", fc.question);
+            const a = prompt("A:", fc.answer);
+            if (q && a) { fc.question = q; fc.answer = a; saveAll(); renderLibrary(); }
+        }
+    }
+    if (e.target.classList.contains("delete-card")) {
+        AppState.flashcards = AppState.flashcards.filter(c => c.id !== e.target.dataset.id);
+        saveAll();
+        renderLibrary();
+    }
+});
+
+document.addEventListener("DOMContentLoaded", initApp);
+window.saveCurrentDeck = saveAll;
+window.quickAddCard = quickAddCard;
