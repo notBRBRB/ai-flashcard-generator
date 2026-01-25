@@ -236,8 +236,8 @@ ${text}`;
             const data = await response.json();
             jsonText = data.choices?.[0]?.message?.content ?? "";
         } else {
-            // Gemini API call
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+            // Gemini API call - Using stable v1 and latest flash model
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
