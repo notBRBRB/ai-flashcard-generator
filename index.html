@@ -180,13 +180,30 @@
                 <h3>AI Configuration</h3>
                 <div class="settings-grid">
                     <div class="input-group">
+                        <label for="aiProviderSelect">Preferred AI Model</label>
+                        <select id="aiProviderSelect" class="text-input">
+                            <option value="gemini">Google Gemini (Free Tier)</option>
+                            <option value="openai">OpenAI (GPT-4o-mini)</option>
+                        </select>
+                    </div>
+                    <div class="input-group" id="openaiKeyGroup">
                         <label for="apiKeyInput">OpenAI API Key</label>
                         <div class="api-key-wrapper">
                             <input type="password" id="apiKeyInput" placeholder="sk-..." class="text-input" />
                             <button id="saveKeyBtn" class="btn-icon">💾</button>
                         </div>
-                        <p class="input-hint">Your key is stored locally in your browser.</p>
                     </div>
+                    <div class="input-group" id="geminiKeyGroup">
+                        <label for="geminiKeyInput">Gemini API Key</label>
+                        <div class="api-key-wrapper">
+                            <input type="password" id="geminiKeyInput" placeholder="Enter Gemini Key..."
+                                class="text-input" />
+                            <button id="saveGeminiKeyBtn" class="btn-icon">💾</button>
+                        </div>
+                    </div>
+                    <p class="input-hint">Keys are stored locally in your browser. <a
+                            href="https://aistudio.google.com/app/apikey" target="_blank"
+                            style="color:var(--accent)">Get Gemini Key here (Free)</a></p>
                 </div>
             </div>
             <div class="settings-group">

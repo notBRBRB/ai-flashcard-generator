@@ -1,8 +1,13 @@
 // ================================
-//  OPENAI API KEY MANAGEMENT
+//  AI API KEY MANAGEMENT
 // ================================
-const API_KEY_STORAGE = "flashcards_openai_api_key";
-let OPENAI_API_KEY = localStorage.getItem(API_KEY_STORAGE) || "";
+const OPENAI_KEY_STORAGE = "flashcards_openai_api_key";
+const GEMINI_KEY_STORAGE = "flashcards_gemini_api_key";
+const PROVIDER_STORAGE = "flashcards_ai_provider";
+
+let OPENAI_API_KEY = localStorage.getItem(OPENAI_KEY_STORAGE) || "";
+let GEMINI_API_KEY = localStorage.getItem(GEMINI_KEY_STORAGE) || "";
+let AI_PROVIDER = localStorage.getItem(PROVIDER_STORAGE) || "gemini";
 
 /* ========== THEME (DARK MODE) ========== */
 const THEME_KEY = "flashcards_theme"; // "dark" or "light"
@@ -173,18 +178,20 @@ async function generateFlashcardsFromText(text) {
     const forceAI = document.getElementById("forceAI")?.checked || false;
     const heuristic = parseSmartFlashcards(text);
 
-    // If no API key, we must return heuristic (or empty)
-    if (!OPENAI_API_KEY || OPENAI_API_KEY === "YOUR_API_KEY_HERE" || OPENAI_API_KEY.trim() === "") {
-        if (forceAI) showToast("API Key missing! Check Settings.", "error");
+    // Check if we have the necessary credentials
+    const currentKey = (AI_PROVIDER === "openai") ? OPENAI_API_KEY : GEMINI_API_KEY;
+
+    if (!currentKey || currentKey.trim() === "") {
+        if (forceAI) showToast(`${AI_PROVIDER.toUpperCase()} API Key missing! Check Settings.`, "error");
         return { cards: heuristic };
     }
 
-    // If not forcing AI and text is short, and heuristic found something, use heuristic
+    // If not forcing AI and text is short, use heuristic
     if (!forceAI && text.length < 300 && heuristic.length >= 2) {
         return { cards: heuristic };
     }
 
-    const prompt = `You are an expert educator. Summarize the following study notes into high-quality Q/A flashcards.
+    const promptText = `You are an expert educator. Summarize the following study notes into high-quality Q/A flashcards.
 Instructions:
 1. Identify major topics or sections in the text and group cards into categories.
 2. If the text is a single topic, use one category like "General" or the topic name.
@@ -205,33 +212,57 @@ NOTES TO SUMMARIZE:
 ${text}`;
 
     try {
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${OPENAI_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: "gpt-4o-mini",
-                messages: [{ role: "user", content: prompt }],
-                temperature: 0.4
-            })
-        });
+        let jsonText = "";
 
-        if (!response.ok) {
-            const errData = await response.json();
-            throw new Error(errData.error?.message || `API Error: ${response.status}`);
+        if (AI_PROVIDER === "openai") {
+            const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${OPENAI_API_KEY}`
+                },
+                body: JSON.stringify({
+                    model: "gpt-4o-mini",
+                    messages: [{ role: "user", content: promptText }],
+                    temperature: 0.4
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error?.message || `OpenAI API Error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            jsonText = data.choices?.[0]?.message?.content ?? "";
+        } else {
+            // Gemini API call
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: promptText }] }],
+                    generationConfig: {
+                        response_mime_type: "application/json"
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error?.message || `Gemini API Error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
         }
-
-        const data = await response.json();
-        const jsonText = data.choices?.[0]?.message?.content ?? "";
 
         // Strip out potential markdown code blocks if the AI included them
         const cleanedJson = jsonText.replace(/```json|```/g, "").trim();
         const parsed = JSON.parse(cleanedJson);
 
         if (parsed.categories && Array.isArray(parsed.categories)) {
-            return parsed; // Return the multi-category object
+            return parsed;
         } else if (Array.isArray(parsed)) {
             return { categories: [{ name: "Generated", cards: parsed }] };
         }
@@ -648,35 +679,68 @@ function initApp() {
         }
     });
 
-    // API Key Management
-    const apiKeyInput = document.getElementById("apiKeyInput");
-    const saveKeyBtn = document.getElementById("saveKeyBtn");
+    // AI Configuration Management
+    const providerSelect = document.getElementById("aiProviderSelect");
+    const openaiKeyInput = document.getElementById("apiKeyInput");
+    const saveOpenaiKeyBtn = document.getElementById("saveKeyBtn");
+    const geminiKeyInput = document.getElementById("geminiKeyInput");
+    const saveGeminiKeyBtn = document.getElementById("saveGeminiKeyBtn");
     const aiWarning = document.getElementById("aiMissingWarning");
 
-    if (apiKeyInput) {
-        apiKeyInput.value = OPENAI_API_KEY;
+    const updateUIPisibility = () => {
+        const p = providerSelect?.value || "gemini";
+        const opGroup = document.getElementById("openaiKeyGroup");
+        const geGroup = document.getElementById("geminiKeyGroup");
+
+        if (p === "openai") {
+            opGroup?.classList.remove("hidden");
+            geGroup?.classList.add("hidden");
+        } else {
+            opGroup?.classList.add("hidden");
+            geGroup?.classList.remove("hidden");
+        }
+    };
+
+    if (providerSelect) {
+        providerSelect.value = AI_PROVIDER;
+        providerSelect.addEventListener("change", (e) => {
+            AI_PROVIDER = e.target.value;
+            localStorage.setItem(PROVIDER_STORAGE, AI_PROVIDER);
+            updateUIPisibility();
+            updateAIWarning();
+        });
     }
 
+    if (openaiKeyInput) openaiKeyInput.value = OPENAI_API_KEY;
+    if (geminiKeyInput) geminiKeyInput.value = GEMINI_API_KEY;
+
     const updateAIWarning = () => {
-        if (!OPENAI_API_KEY) {
+        const currentKey = (AI_PROVIDER === "openai") ? OPENAI_API_KEY : GEMINI_API_KEY;
+        if (!currentKey) {
             aiWarning?.classList.remove("hidden");
         } else {
             aiWarning?.classList.add("hidden");
         }
     };
+
+    updateUIPisibility();
     updateAIWarning();
 
-    saveKeyBtn?.addEventListener("click", () => {
-        const val = apiKeyInput.value.trim();
-        if (!val) {
-            OPENAI_API_KEY = "";
-            localStorage.removeItem(API_KEY_STORAGE);
-            showToast("API Key removed.", "info");
-        } else {
-            OPENAI_API_KEY = val;
-            localStorage.setItem(API_KEY_STORAGE, val);
-            showToast("API Key saved!", "success");
-        }
+    saveOpenaiKeyBtn?.addEventListener("click", () => {
+        const val = openaiKeyInput.value.trim();
+        OPENAI_API_KEY = val;
+        if (!val) localStorage.removeItem(OPENAI_KEY_STORAGE);
+        else localStorage.setItem(OPENAI_KEY_STORAGE, val);
+        showToast("OpenAI Key saved!", "success");
+        updateAIWarning();
+    });
+
+    saveGeminiKeyBtn?.addEventListener("click", () => {
+        const val = geminiKeyInput.value.trim();
+        GEMINI_API_KEY = val;
+        if (!val) localStorage.removeItem(GEMINI_KEY_STORAGE);
+        else localStorage.setItem(GEMINI_KEY_STORAGE, val);
+        showToast("Gemini Key saved!", "success");
         updateAIWarning();
     });
 
