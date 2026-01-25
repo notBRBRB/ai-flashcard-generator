@@ -236,60 +236,58 @@ ${text}`;
             const data = await response.json();
             jsonText = data.choices?.[0]?.message?.content ?? "";
         } else {
-            // Gemini API call with fallback logic
-            const modelsToTry = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"];
+            // Gemini API call with highly resilient fallback logic
+            // Strategy: Try v1beta (JSON) -> v1 (Flash) -> v1 (Pro)
+            const configs = [
+                { ver: "v1beta", model: "gemini-1.5-flash-latest", json: true },
+                { ver: "v1beta", model: "gemini-1.5-flash", json: true },
+                { ver: "v1", model: "gemini-1.5-flash", json: false },
+                { ver: "v1", model: "gemini-pro", json: false }
+            ];
+
             let lastError = null;
 
-            for (const modelName of modelsToTry) {
+            for (const config of configs) {
                 try {
-                    // Try v1beta first as it's more likely to support structured output config
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`, {
+                    const fetchOptions = {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                            contents: [{ parts: [{ text: promptText }] }],
-                            generationConfig: {
-                                responseMimeType: "application/json"
-                            }
+                            contents: [{ parts: [{ text: promptText + (config.json ? "" : "\n\nIMPORTANT: Return ONLY raw JSON, no markdown blocks.") }] }],
+                            generationConfig: config.json ? { responseMimeType: "application/json" } : {},
+                            safetySettings: [
+                                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+                            ]
                         })
-                    });
+                    };
+
+                    const response = await fetch(`https://generativelanguage.googleapis.com/${config.ver}/models/${config.model}:generateContent?key=${GEMINI_API_KEY}`, fetchOptions);
 
                     if (response.ok) {
                         const data = await response.json();
                         jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-                        if (jsonText) break; // Success!
+                        if (jsonText) {
+                            console.log(`Success with ${config.model} (${config.ver})`);
+                            break;
+                        }
                     } else {
                         const errData = await response.json();
-                        // If model not found, try next model
-                        if (errData.error?.message?.includes("not found")) {
-                            continue;
-                        }
-                        // If JSON config not supported, try without it
-                        if (errData.error?.message?.includes("response_mime_type") || errData.error?.message?.includes("responseMimeType")) {
-                            const fallbackResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`, {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                    contents: [{ parts: [{ text: promptText + "\n\nIMPORTANT: Return ONLY raw JSON, no markdown blocks." }] }]
-                                })
-                            });
-                            if (fallbackResponse.ok) {
-                                const fbData = await fallbackResponse.json();
-                                jsonText = fbData.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-                                if (jsonText) break;
-                            }
-                        }
-                        throw new Error(errData.error?.message || `Gemini Error: ${response.status}`);
+                        console.warn(`Gemini Config [${config.ver}/${config.model}] failed:`, errData.error?.message);
+                        lastError = new Error(errData.error?.message || `Status ${response.status}`);
+                        continue;
                     }
                 } catch (e) {
+                    console.warn(`Gemini Fetch [${config.ver}/${config.model}] failed:`, e.message);
                     lastError = e;
-                    console.warn(`Gemini try with ${modelName} failed:`, e.message);
-                    continue; // Try next model
+                    continue;
                 }
             }
 
             if (!jsonText) {
-                throw lastError || new Error("All Gemini models failed to generate valid content.");
+                throw lastError || new Error("All Gemini attempts failed.");
             }
         }
 
