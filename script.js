@@ -894,9 +894,18 @@ function initApp() {
 
 function updateDeckInfo() {
     const el = document.getElementById("deckInfo");
+    const sel = document.getElementById("categorySelect");
+
+    // Ensure we use the actual value from dropdown if available, 
+    // to prevent any sync issues between the variable and UI
+    if (sel && sel.value) {
+        selectedCategoryId = sel.value;
+    }
+
     if (el) {
         const due = getDueCount();
         const name = getCategoryName(selectedCategoryId);
+        console.log(`Updating Deck Info: CategoryID=${selectedCategoryId}, Name=${name}, Cards=${flashcards.length}`);
         el.textContent = `${flashcards.length} ${flashcards.length === 1 ? 'card' : 'cards'} (${due} due) in ${name}`;
     }
 }
@@ -1043,7 +1052,9 @@ function initCategories() {
     const renBtn = document.getElementById("renameCategoryBtn");
     const delBtn = document.getElementById("deleteCategoryBtn");
     sel.addEventListener("change", (e) => {
-        selectedCategoryId = e.target.value;
+        const newId = e.target.value;
+        console.log(`Category Select Changed to: ${newId} (${getCategoryName(newId)})`);
+        selectedCategoryId = newId;
         localStorage.setItem(SELECTED_CATEGORY_KEY, selectedCategoryId);
         loadRatingCounts();
         loadDeckForCategory(selectedCategoryId);
