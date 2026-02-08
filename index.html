@@ -5,7 +5,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI Flashcard Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="styles.css" />
+    <script src="script.js" defer></script>
 </head>
 
 <body>
@@ -62,6 +68,8 @@
             <div class="quick-actions">
                 <button id="startStudyBtn" class="btn-primary large" onclick="navigateTo('study')">Start
                     Studying</button>
+                <button id="startRevisionBtnDash" class="btn-secondary" onclick="navigateTo('study', 'all')">Start
+                    Revision</button>
                 <button id="saveAllBtnDash" class="btn-secondary"
                     onclick="saveCurrentDeck(); showToast('All progress saved!', 'success');">Save All Progress</button>
             </div>
@@ -118,6 +126,11 @@
                     <p class="subtitle">Paste your notes, articles, or text. Our AI will extract concepts for you.</p>
                     <textarea id="notesInput" placeholder="Paste your notes here..."></textarea>
                     <div class="create-options">
+                        <div class="input-group">
+                            <label for="cardCountRange">Number of cards: <span id="cardCountVal">10</span></label>
+                            <input type="range" id="cardCountRange" min="5" max="50" value="10" step="5"
+                                oninput="document.getElementById('cardCountVal').innerText = this.value" />
+                        </div>
                         <label class="toggle-label mini" for="forceAI">
                             <input id="forceAI" type="checkbox" />
                             <span class="toggle-ui" aria-hidden="true"></span>
@@ -147,7 +160,6 @@
             </div>
         </section>
 
-        <!-- Study Page -->
         <section id="studyPage" class="page hidden">
             <div class="study-progress-container">
                 <div class="study-progress-track">
@@ -156,6 +168,10 @@
                 <div id="studyProgressText" class="study-progress-text">0/0</div>
             </div>
             <div id="studySection">
+                <div id="emptyStudy" class="empty-state hidden">
+                    <p>No cards due today!</p>
+                    <button class="btn-primary" onclick="navigateTo('study', 'all')">Start Revision Mode</button>
+                </div>
                 <div class="study-card-container">
                     <div id="studyCard"></div>
                 </div>
@@ -284,7 +300,6 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
 </body>
 
 </html>

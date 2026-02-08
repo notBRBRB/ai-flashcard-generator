@@ -1,7 +1,7 @@
 /**
  * AI Flashcard Generator - Core Application Script
- * Centralized State Management Version
  */
+console.log("AI Flashcard Generator Script Loading...");
 
 // ================================
 //  APP STATE (Single Source of Truth)
@@ -137,7 +137,7 @@ function showToast(message, type = "info") {
 //  NAVIGATION
 // ================================
 
-function navigateTo(pageId) {
+function navigateTo(pageId, subMode = null) {
     document.querySelectorAll('.page').forEach(page => {
         page.classList.add('hidden');
         page.classList.remove('active');
@@ -169,7 +169,7 @@ function navigateTo(pageId) {
     };
     document.getElementById('pageTitle').innerText = titles[pageId] || 'AI Flashcards';
 
-    if (pageId === 'study') startStudyMode();
+    if (pageId === 'study') startStudyMode(subMode);
     if (pageId === 'library') renderLibrary();
     if (pageId === 'dashboard') updateDashboardStats();
 }
@@ -263,7 +263,8 @@ async function generateFlashcardsFromText(text) {
 
     if (!forceAI && text.length < 300 && heuristic.length >= 2) return { cards: heuristic };
 
-    const promptText = `You are an expert educator. Summarize the Q/A into JSON. Format: {"categories":[{"name":"Topic","cards":[{"question":"...","answer":"..."}]}]} NOTES: ${text}`;
+    const count = document.getElementById("cardCountRange")?.value || 10;
+    const promptText = `You are an expert educator. Extract exactly ${count} important Q/A pairs from the notes into JSON. Format: {"categories":[{"name":"Topic","cards":[{"question":"...","answer":"..."}]}]} NOTES: ${text}`;
 
     try {
         let jsonText = "";
@@ -322,25 +323,41 @@ async function generateFlashcardsFromText(text) {
 //  STUDY ENGINE
 // ================================
 
-function startStudyMode() {
-    const dueCards = AppState.flashcards.filter(c => (c.due || 0) <= Date.now());
-    if (AppState.flashcards.length === 0) {
+function startStudyMode(mode) {
+    const studyMode = mode || 'due';
+    const allCards = AppState.flashcards;
+    const dueCards = allCards.filter(c => (c.due || 0) <= Date.now());
+    const cardsToStudy = studyMode === 'all' ? allCards : dueCards;
+
+    const studySection = document.getElementById("studySection");
+    const emptyStudy = document.getElementById("emptyStudy");
+
+    if (allCards.length === 0) {
         showToast("No cards in this category!", "info");
         navigateTo('library');
         return;
     }
-    if (dueCards.length === 0) {
-        showToast("All caught up! No cards due.", "success");
-        navigateTo('dashboard');
+
+    if (cardsToStudy.length === 0) {
+        studySection?.classList.remove("hidden");
+        emptyStudy?.classList.remove("hidden");
+        document.getElementById("studyCard").classList.add("hidden");
+        document.querySelector(".study-controls")?.classList.add("hidden");
         return;
     }
 
-    AppState.stats.sessionTotal = dueCards.length;
+    studySection?.classList.remove("hidden");
+    emptyStudy?.classList.add("hidden");
+    document.getElementById("studyCard")?.classList.remove("hidden");
+    document.querySelector(".study-controls")?.classList.remove("hidden");
+
+    AppState.stats.sessionTotal = cardsToStudy.length;
     AppState.stats.sessionCurrent = 0;
+    AppState.ui.studyList = cardsToStudy; // Track session cards
     updateStudyProgress();
 
-    const next = getNextDueCard();
-    AppState.ui.currentCardId = next.id;
+    const first = cardsToStudy[0];
+    AppState.ui.currentCardId = first.id;
     showStudyCard();
 }
 
@@ -389,7 +406,11 @@ function rateCard(diff) {
     updateStudyProgress();
     updateStreak();
     saveAll();
-    const next = getNextDueCard();
+
+    // Get next card from our session list
+    const nextIndex = AppState.ui.studyList.findIndex(c => c.id === AppState.ui.currentCardId) + 1;
+    const next = AppState.ui.studyList[nextIndex];
+
     if (!next) {
         showToast("Study session complete!", "success");
         navigateTo('dashboard');
@@ -430,6 +451,9 @@ function updateDashboardStats() {
 function initApp() {
     loadAll();
     applyTheme(AppState.preferences.theme);
+
+    // Theme Toggle Handler
+    document.getElementById("themeSwitch")?.addEventListener("change", toggleTheme);
 
     // AI Provider Setup
     const pSel = document.getElementById("aiProviderSelect");
@@ -520,19 +544,19 @@ function initApp() {
         showToast("Progress saved!", "success");
     });
 
-    document.getElementById("shuffleDeckBtn")?.onclick = () => {
+    document.getElementById("shuffleDeckBtn")?.addEventListener("click", () => {
         AppState.flashcards.sort(() => Math.random() - 0.5);
         saveAll();
         renderFlashcards();
-    };
+    });
 
-    document.getElementById("clearDeckBtn")?.onclick = () => {
+    document.getElementById("clearDeckBtn")?.addEventListener("click", () => {
         if (confirm("Clear all cards in this category?")) {
             AppState.flashcards = [];
             saveAll();
             renderFlashcards();
         }
-    };
+    });
 
     // Generate Button
     document.getElementById("generateBtn")?.addEventListener("click", async () => {
@@ -569,7 +593,7 @@ function initApp() {
         }
     });
 
-    document.querySelectorAll(".diff-btn").forEach(btn => btn.onclick = () => rateCard(btn.dataset.diff));
+    document.querySelectorAll(".diff-btn").forEach(btn => btn.addEventListener("click", () => rateCard(btn.dataset.diff)));
     document.getElementById("searchInput")?.addEventListener("input", (e) => {
         AppState.ui.filterText = e.target.value.toLowerCase();
         renderFlashcards();
