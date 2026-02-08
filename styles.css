@@ -382,6 +382,26 @@ button:active {
 }
 
 /* ========== STUDY MODE ========== */
+.study-category-picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.study-category-picker label {
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.study-category-picker .text-input {
+  width: auto;
+  min-width: 180px;
+  padding: 8px 16px;
+}
+
 #studyCard {
   width: 100%;
   min-height: 350px;

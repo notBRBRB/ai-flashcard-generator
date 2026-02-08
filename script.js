@@ -185,15 +185,18 @@ function renderLibrary() {
 }
 
 function renderCategoryOptions() {
-    const sel = document.getElementById("categorySelect");
-    if (!sel) return;
-    sel.innerHTML = "";
-    AppState.categories.forEach(c => {
-        const opt = document.createElement("option");
-        opt.value = c.id;
-        opt.textContent = c.name;
-        if (c.id === AppState.selectedCategoryId) opt.selected = true;
-        sel.appendChild(opt);
+    const selectors = ["categorySelect", "studyCategorySelect"];
+    selectors.forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        sel.innerHTML = "";
+        AppState.categories.forEach(c => {
+            const opt = document.createElement("option");
+            opt.value = c.id;
+            opt.textContent = c.name;
+            if (c.id === AppState.selectedCategoryId) opt.selected = true;
+            sel.appendChild(opt);
+        });
     });
 }
 
@@ -481,11 +484,19 @@ function initApp() {
     });
 
     // Category Handlers
-    document.getElementById("categorySelect")?.addEventListener("change", (e) => {
+    const syncCategories = (id) => {
         saveAll();
-        AppState.selectedCategoryId = e.target.value;
+        AppState.selectedCategoryId = id;
         loadDeck(AppState.selectedCategoryId);
+        renderCategoryOptions(); // Sync all dropdowns
         renderLibrary();
+    };
+
+    document.getElementById("categorySelect")?.addEventListener("change", (e) => syncCategories(e.target.value));
+
+    document.getElementById("studyCategorySelect")?.addEventListener("change", (e) => {
+        syncCategories(e.target.value);
+        startStudyMode(); // Restart study session for the new category
     });
 
     document.getElementById("addCategoryBtn")?.addEventListener("click", () => {
