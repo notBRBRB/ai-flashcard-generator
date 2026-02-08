@@ -68,7 +68,7 @@
 }
 
 body {
-  font-family: 'Inter', 'Outfit', sans-serif;
+  font-family: 'Inter', 'Outfit', "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
   font-size: 16px;
   background: var(--bg);
   color: var(--text);
@@ -178,6 +178,15 @@ button:active {
   background: hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.15);
 }
 
+.btn-primary.large,
+.btn-secondary.large-btn {
+  padding: 16px 32px;
+  font-size: 1.1rem;
+  width: 100%;
+  display: block;
+  text-align: center;
+}
+
 .btn-danger {
   background: rgba(239, 68, 68, 0.1);
   color: var(--danger);
@@ -193,6 +202,37 @@ button:active {
   background: var(--bg);
   border: 1px solid var(--card-border);
   color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-icon:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-icon-large {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  color: var(--accent);
+  border: none;
+  font-size: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-icon-large:hover {
+  background: var(--accent);
+  color: white;
+  transform: scale(1.1);
 }
 
 /* ========== DASHBOARD ========== */
@@ -375,10 +415,22 @@ button:active {
 
 .action-btn {
   background: var(--bg);
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 0.75rem;
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
   border: 1px solid var(--card-border);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--panel);
 }
 
 /* ========== STUDY MODE ========== */
@@ -487,7 +539,7 @@ button:active {
 }
 
 .nav-icon {
-  font-size: 1.25rem;
+  font-size: 1.5rem;
 }
 
 .nav-label {
