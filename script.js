@@ -17,7 +17,7 @@ const AppState = {
         groqKey: localStorage.getItem("flashcards_groq_api_key") || "",
         ollamaModel: localStorage.getItem("flashcards_ollama_model") || "llama3",
         theme: localStorage.getItem("flashcards_theme") || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
-        ttsAutoPlay: false
+        ttsAutoPlay: localStorage.getItem("flashcards_tts_autoplay") === "true"
     },
     stats: {
         streak: parseInt(localStorage.getItem("flashcards_streak")) || 0,
@@ -62,6 +62,7 @@ function saveAll() {
     localStorage.setItem("flashcards_streak", AppState.stats.streak);
     localStorage.setItem("flashcards_last_date", AppState.stats.lastStudyDate);
     localStorage.setItem("flashcards_session_count", AppState.stats.dailySessionCount);
+    localStorage.setItem("flashcards_tts_autoplay", AppState.preferences.ttsAutoPlay);
 }
 
 function loadAll() {
@@ -382,7 +383,9 @@ function showStudyCard() {
     studyCard.innerHTML = `<div><strong>Q:</strong> ${escapeHtml(card.question)}<br><br><em>(Click to flip)</em></div>`;
     studyCard.classList.remove("flipped");
     studyCard.onclick = () => {
+        if (studyCard.classList.contains("flipped")) return; // Already flipped
         studyCard.innerHTML = `<div><strong>A:</strong> ${escapeHtml(card.answer)}</div>`;
+        studyCard.classList.add("flipped");
         if (AppState.preferences.ttsAutoPlay) speakText(card.answer);
     };
 }
@@ -604,6 +607,24 @@ function initApp() {
         }
     });
 
+    // TTS Handlers
+    const ttsToggle = document.getElementById("ttsAutoPlay");
+    if (ttsToggle) {
+        ttsToggle.checked = AppState.preferences.ttsAutoPlay;
+        ttsToggle.addEventListener("change", (e) => {
+            AppState.preferences.ttsAutoPlay = e.target.checked;
+            saveAll();
+        });
+    }
+
+    document.getElementById("speakBtn")?.addEventListener("click", () => {
+        const card = AppState.flashcards.find(c => c.id === AppState.ui.currentCardId);
+        if (!card) return;
+        const studyCard = document.getElementById("studyCard");
+        const textToSpeak = studyCard?.classList.contains("flipped") ? card.answer : card.question;
+        speakText(textToSpeak);
+    });
+
     document.querySelectorAll(".diff-btn").forEach(btn => btn.addEventListener("click", () => rateCard(btn.dataset.diff)));
     document.getElementById("searchInput")?.addEventListener("input", (e) => {
         AppState.ui.filterText = e.target.value.toLowerCase();
@@ -638,7 +659,18 @@ function getNextDueCard() {
     const due = AppState.flashcards.filter(c => (c.due || 0) <= now).sort((a, b) => a.due - b.due);
     return due[0] || null;
 }
-function speakText(t) { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(t)); }
+function speakText(t) {
+    if (!window.speechSynthesis) {
+        console.warn("TTS not supported in this browser.");
+        return;
+    }
+    console.log("Speaking:", t);
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(t);
+    utterance.lang = 'en-US';
+    utterance.onerror = (e) => console.error("TTS Error:", e);
+    window.speechSynthesis.speak(utterance);
+}
 function quickAddCard() {
     const q = prompt("Q:");
     const a = prompt("A:");
